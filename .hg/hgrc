@@ -1,3 +1,0 @@
-[paths]
-default = http://hg.mozilla.org/users/mbalaur_mozilla.com/mq-patches
-default-push = ssh://hg.mozilla.org/users/mbalaur_mozilla.com/mq-patches
