@@ -91,7 +91,7 @@ diff --git a/layout/tools/reftest/remotereftest.py b/layout/tools/reftest/remote
 +        # Workaround for jsreftests.
 +        if options.enablePrivilege:
 +            prefs["capability.principal.codebase.p2.granted"] = "UniversalXPConnect"
-+            prefs["capability.principal.codebase.p2.id"] = "http://%s:%s" % (options.remoteWebServer, options.httpPort))
++            prefs["capability.principal.codebase.p2.id"] = "http://%s:%s" % (options.remoteWebServer, options.httpPort)
  
 -        #workaround for jsreftests.
 -        if options.enablePrivilege:
