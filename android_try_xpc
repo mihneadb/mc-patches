@@ -1,6 +1,0 @@
-# HG changeset patch
-# Parent ddc1c7fad9dc458d2c5df36526b89f0efdcd4389
-# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
-try: -b o -p android -u xpcshell -t none
-
-

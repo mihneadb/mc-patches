@@ -1,6 +1,0 @@
-# HG changeset patch
-# Parent cfd40ce3c9f81541b7f5b07f87ce633b3d4f9713
-# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
-try: -b o -p win32 -u xpcshell[Windows XP] -t none
-
-
