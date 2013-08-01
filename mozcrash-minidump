@@ -1,0 +1,150 @@
+# HG changeset patch
+# Parent fa759f9f99b06abaa6494f19bd1598a1842808db
+Add mozcrash.kill_and_get_minidump
+
+diff --git a/testing/mozbase/mozcrash/mozcrash/mozcrash.py b/testing/mozbase/mozcrash/mozcrash/mozcrash.py
+--- a/testing/mozbase/mozcrash/mozcrash/mozcrash.py
++++ b/testing/mozbase/mozcrash/mozcrash/mozcrash.py
+@@ -1,15 +1,17 @@
+ # This Source Code Form is subject to the terms of the Mozilla Public
+ # License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ # You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+-__all__ = ['check_for_crashes']
++__all__ = ['check_for_crashes',
++           'kill_and_get_minidump']
+ 
+ import glob
++import mozinfo
+ import mozlog
+ import os
+ import re
+ import shutil
+ import subprocess
+ import sys
+ import tempfile
+ import urllib2
+@@ -43,16 +45,19 @@ def check_for_crashes(dump_directory, sy
+     variable MINIDUMP_SAVE_PATH will be checked and its value used if it is not empty.
+ 
+     If `test_name` is set it will be used as the test name in log output. If not set the
+     filename of the calling function will be used.
+ 
+     If `quiet` is set, no PROCESS-CRASH message will be printed to stdout if a
+     crash is detected.
+ 
++    If `quiet` is set, no PROCESS-CRASH message will be printed to stdout if a
++    crash is detected.
++
+     Returns True if any minidumps were found, False otherwise.
+     """
+     dumps = glob.glob(os.path.join(dump_directory, '*.dmp'))
+     if not dumps:
+         return False
+ 
+     if stackwalk_binary is None:
+         stackwalk_binary = os.environ.get('MINIDUMP_STACKWALK', None)
+@@ -147,8 +152,103 @@ def check_for_crashes(dump_directory, sy
+             extra = os.path.splitext(d)[0] + ".extra"
+             if os.path.exists(extra):
+                 os.remove(extra)
+     finally:
+         if remove_symbols:
+             shutil.rmtree(symbols_path)
+ 
+     return True
++
++if mozinfo.isWin:
++    import ctypes
++    import uuid
++
++    kernel32 = ctypes.windll.kernel32
++    OpenProcess = kernel32.OpenProcess
++    CloseHandle = kernel32.CloseHandle
++
++    def write_minidump(pid, dump_directory):
++        """
++        Write a minidump for `pid` into `dump_directory`.
++        """
++        PROCESS_QUERY_INFORMATION = 0x0400
++        PROCESS_VM_READ = 0x0010
++        GENERIC_READ = 0x80000000
++        GENERIC_WRITE = 0x40000000
++        FILE_SHARE_READ = 0x1
++        FILE_SHARE_WRITE = 0x2
++        CREATE_ALWAYS = 2
++        FILE_ATTRIBUTE_NORMAL = 0x80
++
++        proc_handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
++                                  0, pid)
++        if not proc_handle:
++            return
++
++        file_name = os.path.join(dump_directory,
++                                 str(uuid.uuid4()) + ".dmp")
++        if not isinstance(file_name, unicode):
++            file_name = unicode(file_name, sys.getfilesystemencoding())
++        file_handle = kernel32.CreateFileW(file_name,
++                                           GENERIC_READ | GENERIC_WRITE,
++                                           FILE_SHARE_READ | FILE_SHARE_WRITE,
++                                           None,
++                                           CREATE_ALWAYS,
++                                           FILE_ATTRIBUTE_NORMAL,
++                                           None)
++
++        if file_handle:
++            ctypes.windll.dbghelp.MiniDumpWriteDump(proc_handle,
++                                                    pid,
++                                                    file_handle,
++                                                    # Dump type - MiniDumpNormal
++                                                    0,
++                                                    # Exception parameter
++                                                    None,
++                                                    # User stream parameter
++                                                    None,
++                                                    # Callback parameter
++                                                    None)
++            CloseHandle(file_handle)
++        CloseHandle(proc_handle)
++
++    def kill_pid(pid):
++        """
++        Terminate `pid` with extreme prejudice.
++        """
++        PROCESS_TERMINATE = 0x0001
++        handle = OpenProcess(PROCESS_TERMINATE, 0, pid)
++        if handle:
++            kernel32.TerminateProcess(handle, 1)
++            CloseHandle(handle)
++else:
++    def kill_pid(pid):
++        """
++        Terminate `pid` with extreme prejudice.
++        """
++        os.kill(pid, signal.SIGKILL)
++
++def kill_and_get_minidump(pid, dump_directory=None):
++    """
++    Attempt to kill a process and leave behind a minidump describing its
++    execution state.
++
++    `pid` is the process ID to kill.
++    `dump_directory` is the directory where a minidump should be written on
++    Windows, where the dump will be written from outside the process.
++
++    On Windows a dump will be written using the MiniDumpWriteDump function
++    from DbgHelp.dll. On Linux the process will be sent a SIGABRT signal
++    to trigger minidump writing via a Breakpad signal handler. On other
++    platforms the process will simply be killed.
++
++    If the process is still alive after the first attempt it will be more
++    forcibly killed (SIGKILL on Linux).
++    """
++    needs_killing = True
++    if mozinfo.isWin:
++        write_minidump(pid, dump_directory)
++    elif mozinfo.isLinux:
++        os.kill(pid, signal.SIGABRT)
++        needs_killing = True #TODO: check still alive
++    if needs_killing:
++        kill_pid(pid)

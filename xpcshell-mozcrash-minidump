@@ -1,0 +1,77 @@
+# HG changeset patch
+# Parent bb8bfc2a3076f34c3b1e03639db668a61a2520b7
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+(adapted from ted's Use mozcrash.kill_and_get_minidump in xpcshell test harness)
+
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -186,19 +186,19 @@ class XPCShellTestThread(Thread):
+         self.log.info("TEST-INFO | %s | full command: %r" % (name, completeCmd))
+         self.log.info("TEST-INFO | %s | current directory: %r" % (name, testdir))
+         # Show only those environment variables that are changed from
+         # the ambient environment.
+         changedEnv = (set("%s=%s" % i for i in self.env.iteritems())
+                       - set("%s=%s" % i for i in os.environ.iteritems()))
+         self.log.info("TEST-INFO | %s | environment: %s" % (name, list(changedEnv)))
+ 
+-    def testTimeout(self, test_file, processPID):
++    def testTimeout(self, test_file, processPID, test_dir):
+         self.log.error("TEST-UNEXPECTED-FAIL | %s | Test timed out" % test_file)
+-        Automation().killAndGetStackNoScreenshot(processPID, self.appPath, self.debuggerInfo)
++        mozcrash.kill_and_get_minidump(processPID, test_dir)
+ 
+     def buildCmdTestFile(self, name):
+         """
+           Build the command line arguments for the test file.
+           On a remote system, this may be overloaded to use a remote path structure.
+         """
+         return ['-e', 'const _TEST_FILE = ["%s"];' %
+                   replaceBackSlashes(name)]
+@@ -428,17 +428,17 @@ class XPCShellTestThread(Thread):
+         args = self.xpcsRunArgs[:]
+         if 'debug' in self.test_object:
+             args.insert(0, '-d')
+ 
+         completeCmd = cmdH + cmdT + args
+ 
+         testTimer = None
+         if not self.interactive and not self.debuggerInfo:
+-            testTimer = Timer(HARNESS_TIMEOUT, lambda: self.testTimeout(name, proc.pid))
++            testTimer = Timer(HARNESS_TIMEOUT, lambda: self.testTimeout(name, proc.pid, test_dir))
+             testTimer.start()
+ 
+         proc = None
+         stdout = None
+         stderr = None
+ 
+         try:
+             self.log.info("TEST-INFO | %s | running test ..." % name)
+@@ -569,23 +569,24 @@ class XPCShellTestThread(Thread):
+             else:
+                 self.keep_going = False
+                 return
+ 
+         self.keep_going = True
+ 
+ class XPCShellTests(object):
+ 
+-    log = getGlobalLog()
++    log = logging.getLogger()
+     oldcwd = os.getcwd()
+ 
+     def __init__(self, log=None):
+         """ Init logging and node status """
+-        if log:
+-            resetGlobalLog(log)
++        self.log.setLevel(logging.INFO)
++        handler = logging.StreamHandler(log)
++        self.log.addHandler(handler)
+         self.nodeProc = None
+ 
+     def buildTestList(self):
+         """
+           read the xpcshell.ini manifest and set self.alltests to be
+           an array of test objects.
+ 
+           if we are chunking tests, it will be done here as well

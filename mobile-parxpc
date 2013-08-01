@@ -1,12 +1,15 @@
 # HG changeset patch
-# Parent 3fec505fe0793541a494cbe6c065144eac327e9d
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+# Date 1374800539 25200
+#      Thu Jul 25 18:02:19 2013 -0700
+# Node ID 8b60b46735de8dd9ee411afc3d0affd60dfc0827
+# Parent 32aa2b64eaeb62901ca053f91ca83627988d1180
 Bug 887054 - Parallelize xpcshell
 
 diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexpcshelltests.py
 --- a/testing/xpcshell/remotexpcshelltests.py
 +++ b/testing/xpcshell/remotexpcshelltests.py
-@@ -1,273 +1,69 @@
+@@ -1,257 +1,53 @@
  #!/usr/bin/env python
  #
  # This Source Code Form is subject to the terms of the Mozilla Public
@@ -282,10 +285,12 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
  
          self.env["XPCSHELL_TEST_TEMP_DIR"] = self.remoteTmpDir
          if self.interactive:
-             self.log.info("TEST-INFO | temp dir is %s" % self.remoteTmpDir)
-         return self.remoteTmpDir
+@@ -260,17 +56,17 @@ class XPCShellRemote(xpcshell.XPCShellTe
  
      def setupPluginsDir(self):
+         if not os.path.isdir(self.pluginsPath):
+             return None
+ 
          # making sure tmp dir is set up
          self.setupTempDir()
  
@@ -299,7 +304,8 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
      def setupProfileDir(self):
          self.device.removeDir(self.profileDir)
          self.device.mkDir(self.profileDir)
-@@ -276,19 +72,61 @@ class XPCShellRemote(xpcshell.XPCShellTe
+@@ -278,19 +74,57 @@ class XPCShellRemote(xpcshell.XPCShellTe
+             self.log.info("TEST-INFO | profile dir is %s" % self.profileDir)
          return self.profileDir
  
      def logCommand(self, name, completeCmd, testdir):
@@ -307,11 +313,9 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
          self.log.info("TEST-INFO | %s | current directory: %r" % (name, self.remoteHere))
          self.log.info("TEST-INFO | %s | environment: %s" % (name, self.env))
  
-     def setupLeakLogging(self):
+-    def setupLeakLogging(self):
 -        self.env["XPCOM_MEM_LEAK_LOG"] = self.remoteJoin(self.profileDir, "leaks.log")
-+        self.env["XPCOM_MEM_LEAK_LOG"] = remoteJoin(self.profileDir, "leaks.log")
-         return self.env["XPCOM_MEM_LEAK_LOG"]
- 
+-        return self.env["XPCOM_MEM_LEAK_LOG"]
 +    def getHeadAndTailFiles(self, test):
 +        """Override parent method to find files on remote device."""
 +        def sanitize_list(s, kind):
@@ -353,7 +357,7 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
 +              self.remoteDebugger,
 +              self.remoteDebuggerArgs,
 +              self.xpcsCmd]
-+
+ 
      def setLD_LIBRARY_PATH(self, env):
          env["LD_LIBRARY_PATH"]=self.remoteBinDir
  
@@ -361,8 +365,7 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
          # Rather than executing xpcshell directly, this wrapper script is
          # used. By setting environment variables and the cwd in the script,
          # the length of the per-test command line is shortened. This is
-         # often important when using ADB, as there is a limit to the length
-@@ -299,31 +137,31 @@ class XPCShellRemote(xpcshell.XPCShellTe
+@@ -302,31 +136,31 @@ class XPCShellRemote(xpcshell.XPCShellTe
          for envkey, envval in self.env.iteritems():
              f.write("export %s=%s\n" % (envkey, envval))
          f.write("cd $1\n")
@@ -400,13 +403,31 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
          cmd.insert(1, self.remoteHere)
          outputFile = "xpcshelloutput"
          f = open(outputFile, "w+")
-@@ -375,16 +213,202 @@ class XPCShellRemote(xpcshell.XPCShellTe
-                 if os.path.exists(leakLog):
-                     leaks = open(leakLog, "r")
-                     f.write(leaks.read())
-                     leaks.close()
+@@ -362,32 +196,213 @@ class XPCShellRemote(xpcshell.XPCShellTe
+         else:
+             return -1
+ 
+     def removeDir(self, dirname):
+         self.device.removeDir(dirname)
+ 
+     #TODO: consider creating a separate log dir.  We don't have the test file structure,
+     #      so we use filename.log.  Would rather see ./logs/filename.log
+-    def createLogFile(self, test, stdout, leakLogs):
++    def createLogFile(self, test, stdout):
+         try:
+             f = None
+             filename = test.replace('\\', '/').split('/')[-1] + ".log"
+             f = open(filename, "w")
+             f.write(stdout)
+ 
+-            for leakLog in leakLogs:
+-                if os.path.exists(leakLog):
+-                    leaks = open(leakLog, "r")
+-                    f.write(leaks.read())
+-                    leaks.close()
          finally:
-             if f <> None:
+-            if f <> None:
++            if f is not None:
                  f.close()
  
 +
@@ -603,7 +624,7 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
  
          self.add_option("--deviceIP", action="store",
                          type = "string", dest = "deviceIP",
-@@ -513,15 +537,17 @@ def main():
+@@ -516,15 +531,17 @@ def main():
          sys.exit(1)
  
      xpcsh = XPCShellRemote(dm, options, args)
@@ -736,7 +757,7 @@ diff --git a/testing/xpcshell/runtestsb2g.py b/testing/xpcshell/runtestsb2g.py
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py
 +++ b/testing/xpcshell/runxpcshelltests.py
-@@ -954,24 +954,24 @@ class XPCShellTests(object):
+@@ -961,24 +961,24 @@ class XPCShellTests(object):
  
      def addTestResults(self, test):
          self.passCount += test.passCount
@@ -763,7 +784,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |symbolsPath|, if provided is the path to a directory containing
            breakpad symbols for processing crashes in tests.
          |manifest|, if provided, is a file containing a list of
-@@ -1138,27 +1138,30 @@ class XPCShellTests(object):
+@@ -1145,27 +1145,30 @@ class XPCShellTests(object):
              if self.singleFile and not name.endswith(self.singleFile):
                  continue
  

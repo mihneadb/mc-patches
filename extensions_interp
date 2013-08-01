@@ -1,6 +1,9 @@
 # HG changeset patch
-# Parent 7c20e8e4e56e8b7c8def7d13ed42399f8ff8024d
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+# Date 1374730543 25200
+#      Wed Jul 24 22:35:43 2013 -0700
+# Node ID 6f43eca4470ed2430f6487ae8e847e4a99c37155
+# Parent 129ce98f4cb24f84d8d18d2563aaade4facb2a76
 Bug 889182 - mozapps/extensions xpcshell tests cannot be run concurrently
 
 diff --git a/toolkit/mozapps/extensions/test/addons/blocklist_hard1_1/install.rdf b/toolkit/mozapps/extensions/test/addons/blocklist_hard1_1/install.rdf
@@ -4915,7 +4918,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/test_bug554133.js b/toolki
 diff --git a/toolkit/mozapps/extensions/test/xpcshell/test_bug559800.js b/toolkit/mozapps/extensions/test/xpcshell/test_bug559800.js
 --- a/toolkit/mozapps/extensions/test/xpcshell/test_bug559800.js
 +++ b/toolkit/mozapps/extensions/test/xpcshell/test_bug559800.js
-@@ -5,23 +5,29 @@
+@@ -5,40 +5,46 @@
  // This verifies that deleting the database from the profile doesn't break
  // anything
  
@@ -4946,7 +4949,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/test_bug559800.js b/toolki
      name: "Test Addon 1",
    }, profileDir);
  
-@@ -29,16 +35,17 @@ function run_test() {
+   startupManager();
  
    do_test_pending();
  
@@ -4954,7 +4957,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/test_bug559800.js b/toolki
  }
  
  function end_test() {
-   do_test_finished();
+-  do_test_finished();
 +  gServer.stop(do_test_finished);
  }
  

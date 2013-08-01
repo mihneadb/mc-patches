@@ -1,0 +1,339 @@
+# HG changeset patch
+# Parent 57c2c65011dbb2573c7353a3fc1377a0628c0961
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 898658 - Run known intermittent failing tests sequentially
+
+diff --git a/dom/encoding/test/unit/xpcshell.ini b/dom/encoding/test/unit/xpcshell.ini
+--- a/dom/encoding/test/unit/xpcshell.ini
++++ b/dom/encoding/test/unit/xpcshell.ini
+@@ -6,8 +6,9 @@ tail =
+ [test_euc-jp.js]
+ [test_euc-kr.js]
+ [test_gbk.js]
+ [test_hz-gb-2312.js]
+ [test_iso-2022-jp.js]
+ [test_iso-2022-kr.js]
+ [test_shift_jis.js]
+ [test_singlebytes.js]
++run-sequentially = Takes too long if run in parallel on single core.
+diff --git a/dom/indexedDB/test/unit/xpcshell.ini b/dom/indexedDB/test/unit/xpcshell.ini
+--- a/dom/indexedDB/test/unit/xpcshell.ini
++++ b/dom/indexedDB/test/unit/xpcshell.ini
+@@ -41,17 +41,19 @@ tail =
+ [test_objectCursors.js]
+ [test_objectStore_inline_autoincrement_key_added_on_put.js]
+ [test_objectStore_remove_values.js]
+ [test_odd_result_order.js]
+ [test_open_empty_db.js]
+ [test_open_for_principal.js]
+ [test_open_objectStore.js]
+ [test_optionalArguments.js]
++run-sequentially = Intermittently times out when run in parallel.
+ [test_overlapping_transactions.js]
++run-sequentially = Intermittently times out, bug 860714
+ [test_put_get_values.js]
+ [test_put_get_values_autoIncrement.js]
+ [test_readonly_transactions.js]
+ [test_remove_index.js]
+ [test_remove_objectStore.js]
+ [test_request_readyState.js]
+ [test_setVersion.js]
+ [test_setVersion_abort.js]
+diff --git a/extensions/cookie/test/unit/xpcshell.ini b/extensions/cookie/test/unit/xpcshell.ini
+--- a/extensions/cookie/test/unit/xpcshell.ini
++++ b/extensions/cookie/test/unit/xpcshell.ini
+@@ -5,18 +5,21 @@ tail =
+ [test_bug526789.js]
+ [test_bug650522.js]
+ [test_bug667087.js]
+ [test_cookies_async_failure.js]
+ [test_cookies_persistence.js]
+ [test_cookies_privatebrowsing.js]
+ [test_cookies_profile_close.js]
+ [test_cookies_read.js]
++run-sequentially = Intermittently times out, bug 587767
+ [test_cookies_sync_failure.js]
++run-sequentially = Intermittently times out when run in parallel.
+ [test_cookies_thirdparty.js]
++run-sequentially = Intermittently times out when run in parallel.
+ [test_cookies_thirdparty_session.js]
+ [test_domain_eviction.js]
+ [test_eviction.js]
+ [test_permmanager_expiration.js]
+ [test_permmanager_getPermissionObject.js]
+ [test_permmanager_notifications.js]
+ [test_permmanager_removeall.js]
+ [test_permmanager_load_invalid_entries.js]
+diff --git a/netwerk/test/unit/xpcshell.ini b/netwerk/test/unit/xpcshell.ini
+--- a/netwerk/test/unit/xpcshell.ini
++++ b/netwerk/test/unit/xpcshell.ini
+@@ -101,16 +101,17 @@ tail =
+ [test_fallback_redirect-to-different-origin_canceled.js]
+ [test_fallback_redirect-to-different-origin_passing.js]
+ [test_fallback_request-error_canceled.js]
+ [test_fallback_request-error_passing.js]
+ [test_fallback_response-error_canceled.js]
+ [test_fallback_response-error_passing.js]
+ [test_file_partial_inputstream.js]
+ [test_file_protocol.js]
++run-sequentially = Fails when run in parallel - can't trigger breakpad.
+ [test_filestreams.js]
+ [test_freshconnection.js]
+ [test_gre_resources.js]
+ [test_gzipped_206.js]
+ [test_head.js]
+ [test_header_Accept-Language.js]
+ [test_headers.js]
+ [test_http_headers.js]
+@@ -168,16 +169,17 @@ fail-if = os == "android"
+ [test_simple.js]
+ [test_sockettransportsvc_available.js]
+ [test_socks.js]
+ # Bug 675039: test fails consistently on Android
+ fail-if = os == "android"
+ # spdy unit tests require us to have node available to run the spdy server
+ [test_spdy2.js]
+ run-if = hasNode
++run-sequentially = Fails intermittently when run in parallel.
+ [test_spdy.js]
+ run-if = hasNode
+ [test_speculative_connect.js]
+ [test_standardurl.js]
+ [test_standardurl_port.js]
+ [test_streamcopier.js]
+ [test_traceable_channel.js]
+ [test_unescapestring.js]
+diff --git a/services/common/tests/unit/xpcshell.ini b/services/common/tests/unit/xpcshell.ini
+--- a/services/common/tests/unit/xpcshell.ini
++++ b/services/common/tests/unit/xpcshell.ini
+@@ -23,17 +23,19 @@ firefox-appdir = browser
+ 
+ [test_async_chain.js]
+ [test_async_querySpinningly.js]
+ [test_bagheera_server.js]
+ [test_bagheera_client.js]
+ [test_log4moz.js]
+ [test_observers.js]
+ [test_restrequest.js]
++run-sequentially = Intermittently times out, bug 681174
+ [test_tokenauthenticatedrequest.js]
+ 
+ # Storage service APIs
+ [test_storageservice_bso.js]
+ [test_storageservice_client.js]
+ 
+ [test_tokenserverclient.js]
+ 
+ [test_storage_server.js]
++run-sequentially = Intermittent, bug 845623
+diff --git a/services/healthreport/tests/xpcshell/xpcshell.ini b/services/healthreport/tests/xpcshell/xpcshell.ini
+--- a/services/healthreport/tests/xpcshell/xpcshell.ini
++++ b/services/healthreport/tests/xpcshell/xpcshell.ini
+@@ -1,15 +1,16 @@
+ [DEFAULT]
+ head = head.js
+ tail =
+ 
+ [test_load_modules.js]
+ [test_profile.js]
+ [test_healthreporter.js]
++run-sequentially = Intermittent fail, bug 850091
+ [test_provider_addons.js]
+ [test_provider_appinfo.js]
+ [test_provider_crashes.js]
+ [test_provider_places.js]
+ [test_provider_searches.js]
+ [test_provider_sysinfo.js]
+ [test_provider_sessions.js]
+ 
+diff --git a/services/metrics/tests/xpcshell/xpcshell.ini b/services/metrics/tests/xpcshell/xpcshell.ini
+--- a/services/metrics/tests/xpcshell/xpcshell.ini
++++ b/services/metrics/tests/xpcshell/xpcshell.ini
+@@ -1,8 +1,10 @@
+ [DEFAULT]
+ head = head.js
+ tail =
+ 
+ [test_load_modules.js]
+ [test_metrics_provider.js]
+ [test_metrics_provider_manager.js]
++run-sequentially = Times out when run in parallel
+ [test_metrics_storage.js]
++run-sequentially = Times out when run in parallel
+diff --git a/services/sync/tests/unit/xpcshell.ini b/services/sync/tests/unit/xpcshell.ini
+--- a/services/sync/tests/unit/xpcshell.ini
++++ b/services/sync/tests/unit/xpcshell.ini
+@@ -31,16 +31,17 @@ firefox-appdir = browser
+ [test_jpakeclient.js]
+ # Bug 618233: this test produces random failures on Windows 7.
+ # Bug 676978: test hangs on Android (see also testing/xpcshell/xpcshell.ini)
+ skip-if = os == "win" || os == "android"
+ 
+ # HTTP layers.
+ [test_resource.js]
+ [test_resource_async.js]
++run-sequentially = Times out when run in parallel.
+ [test_resource_header.js]
+ [test_resource_ua.js]
+ [test_syncstoragerequest.js]
+ 
+ # Generic Sync types.
+ [test_collection_inc_get.js]
+ [test_collections_recovery.js]
+ [test_identity_manager.js]
+diff --git a/storage/test/unit/xpcshell.ini b/storage/test/unit/xpcshell.ini
+--- a/storage/test/unit/xpcshell.ini
++++ b/storage/test/unit/xpcshell.ini
+@@ -11,17 +11,19 @@ tail =
+ # Bug 676981: test fails consistently on Android
+ fail-if = os == "android"
+ [test_connection_executeAsync.js]
+ [test_js_helpers.js]
+ [test_levenshtein.js]
+ [test_like.js]
+ [test_like_escape.js]
+ [test_locale_collation.js]
++run-sequentially = Times out when run in parallel.
+ [test_page_size_is_32k.js]
++run-sequentially = Times out when run in parallel.
+ [test_sqlite_secure_delete.js]
+ [test_statement_executeAsync.js]
+ [test_statement_wrapper_automatically.js]
+ [test_storage_aggregates.js]
+ [test_storage_connection.js]
+ [test_storage_fulltextindex.js]
+ [test_storage_function.js]
+ [test_storage_progresshandler.js]
+diff --git a/toolkit/components/downloads/test/unit/xpcshell.ini b/toolkit/components/downloads/test/unit/xpcshell.ini
+--- a/toolkit/components/downloads/test/unit/xpcshell.ini
++++ b/toolkit/components/downloads/test/unit/xpcshell.ini
+@@ -9,16 +9,17 @@ firefox-appdir = browser
+ [test_bug_401430.js]
+ [test_bug_401582.js]
+ [test_bug_406857.js]
+ [test_bug_409179.js]
+ [test_bug_420230.js]
+ [test_cancel_download_files_removed.js]
+ # Bug 676989: test hangs consistently on Android
+ skip-if = os == "android"
++run-sequentially = Fails on 10.6 debug when run in parallel.
+ [test_download_manager.js]
+ [test_download_samename.js]
+ # Bug 676989: test hangs consistently on Android
+ skip-if = os == "android"
+ [test_guid.js]
+ [test_history_expiration.js]
+ [test_offline_support.js]
+ [test_old_download_files_removed.js]
+diff --git a/toolkit/components/passwordmgr/test/unit/xpcshell.ini b/toolkit/components/passwordmgr/test/unit/xpcshell.ini
+--- a/toolkit/components/passwordmgr/test/unit/xpcshell.ini
++++ b/toolkit/components/passwordmgr/test/unit/xpcshell.ini
+@@ -4,17 +4,20 @@ tail =
+ 
+ [test_access_db_connection.js]
+ [test_storage_legacy_1.js]
+ [test_storage_legacy_2.js]
+ [test_storage_legacy_3.js]
+ [test_storage_legacy_4.js]
+ [test_storage_legacy_5.js]
+ [test_storage_mozStorage_1.js]
++run-sequentially = Times out when run in parallel.
+ [test_storage_mozStorage_2.js]
++run-sequentially = Times out when run in parallel.
+ [test_storage_mozStorage_3.js]
++run-sequentially = Times out when run in parallel.
+ [test_storage_mozStorage_4.js]
+ [test_storage_mozStorage_5.js]
+ [test_storage_mozStorage_6.js]
+ [test_storage_mozStorage_7.js]
+ [test_storage_mozStorage_migrate.js]
+ [test_storage_mozStorage_notify.js]
+ [test_top_loginmgr_1.js]
+diff --git a/toolkit/components/places/tests/unit/xpcshell.ini b/toolkit/components/places/tests/unit/xpcshell.ini
+--- a/toolkit/components/places/tests/unit/xpcshell.ini
++++ b/toolkit/components/places/tests/unit/xpcshell.ini
+@@ -34,17 +34,19 @@ skip-if = os == "android"
+ [test_419792_node_tags_property.js]
+ [test_420331_wyciwyg.js]
+ [test_421180.js]
+ [test_425563.js]
+ [test_429505_remove_shortcuts.js]
+ [test_433317_query_title_update.js]
+ [test_433525_hasChildren_crash.js]
+ [test_452777.js]
++run-sequentially = Intermittently times out when run in parallel.
+ [test_454977.js]
++run-sequentially = Intermittently times out when run in parallel.
+ [test_463863.js]
+ [test_485442_crash_bug_nsNavHistoryQuery_GetUri.js]
+ [test_486978_sort_by_date_queries.js]
+ [test_536081.js]
+ [test_adaptive.js]
+ # Bug 676989: test hangs consistently on Android
+ skip-if = os == "android"
+ [test_adaptive_bug527311.js]
+diff --git a/toolkit/components/telemetry/tests/unit/xpcshell.ini b/toolkit/components/telemetry/tests/unit/xpcshell.ini
+--- a/toolkit/components/telemetry/tests/unit/xpcshell.ini
++++ b/toolkit/components/telemetry/tests/unit/xpcshell.ini
+@@ -3,12 +3,13 @@ head = head.js
+ tail = 
+ 
+ [test_nsITelemetry.js]
+ [test_TelemetryLateWrites.js]
+ [test_TelemetryLockCount.js]
+ [test_TelemetryPing.js]
+ # Bug 676989: test fails consistently on Android
+ # fail-if = os == "android"
++run-sequentially = Times out when run in parallel.
+ [test_TelemetryPing_idle.js]
+ [test_TelemetryStopwatch.js]
+ [test_TelemetryPingBuildID.js]
+ [test_ThirdPartyCookieProbe.js]
+diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini
+--- a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini
++++ b/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini
+@@ -9,16 +9,17 @@ skip-if = os == "android"
+ [test_AddonRepository_cache.js]
+ # Bug 676992: test consistently hangs on Android
+ skip-if = os == "android"
+ run-sequentially = Uses hardcoded ports in xpi files.
+ [test_AddonRepository_compatmode.js]
+ # Bug 676992: test consistently hangs on Android
+ skip-if = os == "android"
+ [test_DeferredSave.js]
++run-sequentially = Fails when run concurrently.
+ [test_LightweightThemeManager.js]
+ [test_backgroundupdate.js]
+ [test_badschema.js]
+ [test_blocklistchange.js]
+ # Bug 676992: test consistently hangs on Android
+ skip-if = os == "android"
+ [test_blocklist_regexp.js]
+ skip-if = os == "android"
+@@ -220,23 +221,26 @@ fail-if = os == "android"
+ # Bug 676992: test consistently fails on Android
+ fail-if = os == "android"
+ [test_syncGUID.js]
+ [test_strictcompatibility.js]
+ [test_targetPlatforms.js]
+ [test_theme.js]
+ # Bug 676992: test consistently fails on Android
+ fail-if = os == "android"
++run-sequentially = Intermittently times out, bug 854330
+ [test_types.js]
+ [test_uninstall.js]
+ [test_update.js]
+ # Bug 676992: test consistently hangs on Android
+ skip-if = os == "android"
++run-sequentially = Intermittently times out, bug 854330
+ [test_update_strictcompat.js]
+ # Bug 676992: test consistently hangs on Android
++run-sequentially = Intermittently times out, bug 854330
+ skip-if = os == "android"
+ [test_update_ignorecompat.js]
+ # Bug 676992: test consistently hangs on Android
+ skip-if = os == "android"
+ [test_updatecheck.js]
+ # Bug 676992: test consistently hangs on Android
+ skip-if = os == "android"
+ run-sequentially = Uses hardcoded ports in xpi files.
