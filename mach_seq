@@ -1,0 +1,92 @@
+# HG changeset patch
+# Parent be648596f6f35552131e864f0afd1ad1faaf250a
+
+diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.py
+--- a/testing/xpcshell/mach_commands.py
++++ b/testing/xpcshell/mach_commands.py
+@@ -40,17 +40,17 @@ class XPCShellRunner(MozbuildObject):
+     """Run xpcshell tests."""
+     def run_suite(self, **kwargs):
+         manifest = os.path.join(self.topobjdir, '_tests', 'xpcshell',
+             'xpcshell.ini')
+ 
+         return self._run_xpcshell_harness(manifest=manifest, **kwargs)
+ 
+     def run_test(self, test_file, debug=False, interactive=False,
+-        keep_going=False, shuffle=False):
++        keep_going=False, sequential=False, shuffle=False):
+         """Runs an individual xpcshell test."""
+         # TODO Bug 794506 remove once mach integrates with virtualenv.
+         build_path = os.path.join(self.topobjdir, 'build')
+         if build_path not in sys.path:
+             sys.path.append(build_path)
+ 
+         if test_file == 'all':
+             self.run_suite(debug=debug, interactive=interactive,
+@@ -76,27 +76,28 @@ class XPCShellRunner(MozbuildObject):
+                 'It is possible you received this error because the tree is '
+                 'not built or tests are not enabled.')
+ 
+         args = {
+             'debug': debug,
+             'interactive': interactive,
+             'keep_going': keep_going,
+             'shuffle': shuffle,
++            'sequential': sequential,
+             'test_dirs': xpcshell_dirs,
+         }
+ 
+         if os.path.isfile(path_arg.srcdir_path()):
+             args['test_path'] = mozpack.path.basename(path_arg.srcdir_path())
+ 
+         return self._run_xpcshell_harness(**args)
+ 
+     def _run_xpcshell_harness(self, test_dirs=None, manifest=None,
+         test_path=None, debug=False, shuffle=False, interactive=False,
+-        keep_going=False):
++        keep_going=False, sequential=False):
+ 
+         # Obtain a reference to the xpcshell test runner.
+         import runxpcshelltests
+ 
+         dummy_log = StringIO()
+         xpcshell = runxpcshelltests.XPCShellTests(log=dummy_log)
+         self.log_manager.enable_unstructured()
+ 
+@@ -105,16 +106,17 @@ class XPCShellRunner(MozbuildObject):
+ 
+         args = {
+             'xpcshell': os.path.join(self.bindir, 'xpcshell'),
+             'mozInfo': os.path.join(self.topobjdir, 'mozinfo.json'),
+             'symbolsPath': os.path.join(self.distdir, 'crashreporter-symbols'),
+             'interactive': interactive,
+             'keepGoing': keep_going,
+             'logfiles': False,
++            'sequential': sequential,
+             'shuffle': shuffle,
+             'testsRootDir': tests_dir,
+             'testingModulesDir': modules_dir,
+             'profileName': 'firefox',
+             'verbose': test_path is not None,
+             'xunitFilename': os.path.join(self.statedir, 'xpchsell.xunit.xml'),
+             'xunitName': 'xpcshell',
+             'pluginsPath': os.path.join(self.distdir, 'plugins'),
+@@ -160,16 +162,18 @@ class MachCommands(MachCommandBase):
+         help='Test to run. Can be specified as a single JS file, a directory, '
+              'or omitted. If omitted, the entire test suite is executed.')
+     @CommandArgument('--debug', '-d', action='store_true',
+         help='Run test in a debugger.')
+     @CommandArgument('--interactive', '-i', action='store_true',
+         help='Open an xpcshell prompt before running tests.')
+     @CommandArgument('--keep-going', '-k', action='store_true',
+         help='Continue running tests after a SIGINT is received.')
++    @CommandArgument('--sequential', action='store_true',
++        help='Run the tests sequentially.')
+     @CommandArgument('--shuffle', '-s', action='store_true',
+         help='Randomize the execution order of tests.')
+     def run_xpcshell_test(self, **params):
+         # We should probably have a utility function to ensure the tree is
+         # ready to run tests. Until then, we just create the state dir (in
+         # case the tree wasn't built with mach).
+         self._ensure_state_subdir_exists('.')
+ 
