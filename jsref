@@ -1,0 +1,31 @@
+# HG changeset patch
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+# Date 1374798670 25200
+#      Thu Jul 25 17:31:10 2013 -0700
+# Node ID 084f780672d4ae854579985b20a11fa804bba300
+# Parent 73b69c146ca6926b4a72bb484550e5afe04b93cc
+Bug 873179 - Add support for JSReftests to B2G
+
+diff --git a/layout/tools/reftest/runreftestb2g.py b/layout/tools/reftest/runreftestb2g.py
+--- a/layout/tools/reftest/runreftestb2g.py
++++ b/layout/tools/reftest/runreftestb2g.py
+@@ -535,16 +535,19 @@ def main(args=sys.argv[1:]):
+     reftest = B2GReftest(auto, dm, options, SCRIPT_DIRECTORY)
+     options = parser.verifyCommonOptions(options, reftest)
+ 
+     logParent = os.path.dirname(options.remoteLogFile)
+     dm.mkDir(logParent);
+     auto.setRemoteLog(options.remoteLogFile)
+     auto.setServerInfo(options.webServer, options.httpPort, options.sslPort)
+ 
++    # Hack in a symbolic link for jsreftest
++    os.system("ln -s %s %s" % (os.path.join('..', 'jsreftest'), os.path.join(SCRIPT_DIRECTORY, 'jsreftest')))
++
+     # Dynamically build the reftest URL if possible, beware that args[0] should exist 'inside' the webroot
+     manifest = args[0]
+     if os.path.exists(os.path.join(SCRIPT_DIRECTORY, args[0])):
+         manifest = "http://%s:%s/%s" % (options.remoteWebServer, options.httpPort, args[0])
+     elif os.path.exists(args[0]):
+         manifestPath = os.path.abspath(args[0]).split(SCRIPT_DIRECTORY)[1].strip('/')
+         manifest = "http://%s:%s/%s" % (options.remoteWebServer, options.httpPort, manifestPath)
+     else:

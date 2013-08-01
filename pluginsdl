@@ -1,0 +1,39 @@
+# HG changeset patch
+# Parent 129ce98f4cb24f84d8d18d2563aaade4facb2a76
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 899857 - APluginsDL provider lists shared plugin directory first
+
+diff --git a/js/xpconnect/shell/xpcshell.cpp b/js/xpconnect/shell/xpcshell.cpp
+--- a/js/xpconnect/shell/xpcshell.cpp
++++ b/js/xpconnect/shell/xpcshell.cpp
+@@ -1945,30 +1945,17 @@ XPCShellDirProvider::GetFiles(const char
+             NS_SUCCEEDED(appDir->AppendNative(NS_LITERAL_CSTRING("defaults"))) &&
+             NS_SUCCEEDED(appDir->AppendNative(NS_LITERAL_CSTRING("preferences"))) &&
+             NS_SUCCEEDED(appDir->Exists(&exists)) && exists) {
+             dirs.AppendObject(appDir);
+             return NS_NewArrayEnumerator(result, dirs);
+         }
+         return NS_ERROR_FAILURE;
+     } else if (!strcmp(prop, NS_APP_PLUGINS_DIR_LIST)) {
+-        nsCOMPtr<nsIFile> file;
+         nsCOMArray<nsIFile> dirs;
+-        bool exists;
+-        // We have to add this path, buildbot copies the test plugin directory
+-        // to (app)/bin when unpacking test zips.
+-        if (mGREDir) {
+-            mGREDir->Clone(getter_AddRefs(file));
+-            if (NS_SUCCEEDED(mGREDir->Clone(getter_AddRefs(file)))) {
+-                file->AppendNative(NS_LITERAL_CSTRING("plugins"));
+-                if (NS_SUCCEEDED(file->Exists(&exists)) && exists) {
+-                    dirs.AppendObject(file);
+-                }
+-            }
+-        }
+         // Add the test plugin location passed in by the caller or through
+         // runxpcshelltests.
+         if (mPluginDir) {
+             dirs.AppendObject(mPluginDir);
+         }
+         return NS_NewArrayEnumerator(result, dirs);
+     }
+     return NS_ERROR_FAILURE;

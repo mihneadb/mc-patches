@@ -1,0 +1,14 @@
+reftestprof
+pluginsdl
+try-reftest-desktop
+parxpc
+mobile-parxpc
+extensions_interp
+punycodeURIs
+try-xpc-all
+intermittents
+try-reftest-all
+mozcrash-minidump
+xpcshell-mozcrash-minidump
+jsref
+try-xpc-desktop-all

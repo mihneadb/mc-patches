@@ -1,0 +1,50 @@
+# HG changeset patch
+# Parent b3fcd828cadc927bdf28f225835be0dbca1c56a6
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 898819 - test_punycodeURIs.js should not use a shared dir for output
+
+diff --git a/uriloader/exthandler/tests/unit/test_punycodeURIs.js b/uriloader/exthandler/tests/unit/test_punycodeURIs.js
+--- a/uriloader/exthandler/tests/unit/test_punycodeURIs.js
++++ b/uriloader/exthandler/tests/unit/test_punycodeURIs.js
+@@ -6,19 +6,21 @@
+ const kTestURI = "http://\u65e5\u672c\u8a93.jp/";
+ const kExpectedURI = "http://xn--wgv71a309e.jp/";
+ const kOutputFile = "result.txt";
+ 
+ // Try several times in case the box we're running on is slow.
+ const kMaxCheckExistAttempts = 30; // seconds
+ var gCheckExistsAttempts = 0;
+ 
++const tempDir = do_get_tempdir();
++
+ function checkFile() {
+   // This is where we expect the output
+-  var tempFile = do_get_cwd();
++  var tempFile = tempDir.clone();
+   tempFile.append(kOutputFile);
+ 
+   if (!tempFile.exists()) {
+     if (gCheckExistsAttempts >= kMaxCheckExistAttempts) {
+       do_throw("Expected File " + tempFile.path + " does not exist after " +
+                  kMaxCheckExistAttempts + " seconds");
+     }
+     else {
+@@ -85,17 +87,17 @@ function run_test() {
+ 
+   if (!exe.exists()) {
+     // Maybe we are on windows
+     exe.leafName = "WriteArgument.exe";
+     if (!exe.exists())
+       do_throw("Could not locate the WriteArgument tests executable\n");
+   }
+ 
+-  var outFile = processDir.clone();
++  var outFile = tempDir.clone();
+   outFile.append(kOutputFile);
+ 
+   // Set an environment variable for WriteArgument to pick up
+   var envSvc =
+     Components.classes["@mozilla.org/process/environment;1"]
+               .getService(Components.interfaces.nsIEnvironment);
+ 
+   // The Write Argument file needs to know where its libraries are, so

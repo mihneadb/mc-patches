@@ -1,0 +1,297 @@
+# HG changeset patch
+# Parent 129ce98f4cb24f84d8d18d2563aaade4facb2a76
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 899171 - Use mozprofile in the reftest harness
+
+diff --git a/layout/tools/reftest/remotereftest.py b/layout/tools/reftest/remotereftest.py
+--- a/layout/tools/reftest/remotereftest.py
++++ b/layout/tools/reftest/remotereftest.py
+@@ -327,65 +327,60 @@ class RemoteReftest(RefTest):
+ 
+         options.xrePath = remoteXrePath
+         options.utilityPath = remoteUtilityPath
+         return 0
+ 
+     def stopWebServer(self, options):
+         self.server.stop()
+ 
+-    def createReftestProfile(self, options, profileDir, reftestlist):
+-        RefTest.createReftestProfile(self, options, profileDir, reftestlist, server=options.remoteWebServer)
++    def createReftestProfile(self, options, reftestlist):
++        profile = RefTest.createReftestProfile(self, options, reftestlist, server=options.remoteWebServer)
++        profileDir = profile.profile
+ 
+-        # Turn off the locale picker screen
+-        fhandle = open(os.path.join(profileDir, "user.js"), 'a')
+-        fhandle.write("""
+-user_pref("browser.firstrun.show.localepicker", false);
+-user_pref("font.size.inflation.emPerLine", 0);
+-user_pref("font.size.inflation.minTwips", 0);
+-user_pref("reftest.remote", true);
+-// Set a future policy version to avoid the telemetry prompt.
+-user_pref("toolkit.telemetry.prompted", 999);
+-user_pref("toolkit.telemetry.notifiedOptOut", 999);
+-user_pref("reftest.uri", "%s");
+-user_pref("datareporting.policy.dataSubmissionPolicyBypassAcceptance", true);
++        prefs = {}
++        prefs["browser.firstrun.show.localepicker"] = false
++        prefs["font.size.inflation.emPerLine"] = 0
++        prefs["font.size.inflation.minTwips"] = 0
++        prefs["reftest.remote"] = true
++        # Set a future policy version to avoid the telemetry prompt.
++        prefs["toolkit.telemetry.prompted"] = 999
++        prefs["toolkit.telemetry.notifiedOptOut"] = 999
++        prefs["reftest.uri"] = reftestlist
++        prefs["datareporting.policy.dataSubmissionPolicyBypassAcceptance"] = true
+ 
+-// Point the url-classifier to the local testing server for fast failures
+-user_pref("browser.safebrowsing.gethashURL", "http://127.0.0.1:8888/safebrowsing-dummy/gethash");
+-user_pref("browser.safebrowsing.keyURL", "http://127.0.0.1:8888/safebrowsing-dummy/newkey");
+-user_pref("browser.safebrowsing.updateURL", "http://127.0.0.1:8888/safebrowsing-dummy/update");
+-// Point update checks to the local testing server for fast failures
+-user_pref("extensions.update.url", "http://127.0.0.1:8888/extensions-dummy/updateURL");
+-user_pref("extensions.update.background.url", "http://127.0.0.1:8888/extensions-dummy/updateBackgroundURL");
+-user_pref("extensions.blocklist.url", "http://127.0.0.1:8888/extensions-dummy/blocklistURL");
+-user_pref("extensions.hotfix.url", "http://127.0.0.1:8888/extensions-dummy/hotfixURL");
+-// Turn off extension updates so they don't bother tests
+-user_pref("extensions.update.enabled", false);
+-// Make sure opening about:addons won't hit the network
+-user_pref("extensions.webservice.discoverURL", "http://127.0.0.1:8888/extensions-dummy/discoveryURL");
+-// Make sure AddonRepository won't hit the network
+-user_pref("extensions.getAddons.maxResults", 0);
+-user_pref("extensions.getAddons.get.url", "http://127.0.0.1:8888/extensions-dummy/repositoryGetURL");
+-user_pref("extensions.getAddons.getWithPerformance.url", "http://127.0.0.1:8888/extensions-dummy/repositoryGetWithPerformanceURL");
+-user_pref("extensions.getAddons.search.browseURL", "http://127.0.0.1:8888/extensions-dummy/repositoryBrowseURL");
+-user_pref("extensions.getAddons.search.url", "http://127.0.0.1:8888/extensions-dummy/repositorySearchURL");
+-// Make sure that opening the plugins check page won't hit the network
+-user_pref("plugins.update.url", "http://127.0.0.1:8888/plugins-dummy/updateCheckURL");
++        # Point the url-classifier to the local testing server for fast failures
++        prefs["browser.safebrowsing.gethashURL"] = "http://127.0.0.1:8888/safebrowsing-dummy/gethash"
++        prefs["browser.safebrowsing.keyURL"] = "http://127.0.0.1:8888/safebrowsing-dummy/newkey"
++        prefs["browser.safebrowsing.updateURL"] = "http://127.0.0.1:8888/safebrowsing-dummy/update"
++        # Point update checks to the local testing server for fast failures
++        prefs["extensions.update.url"] = "http://127.0.0.1:8888/extensions-dummy/updateURL"
++        prefs["extensions.update.background.url"] = "http://127.0.0.1:8888/extensions-dummy/updateBackgroundURL"
++        prefs["extensions.blocklist.url"] = "http://127.0.0.1:8888/extensions-dummy/blocklistURL"
++        prefs["extensions.hotfix.url"] = "http://127.0.0.1:8888/extensions-dummy/hotfixURL"
++        # Turn off extension updates so they don't bother tests
++        prefs["extensions.update.enabled"] = false
++        # Make sure opening about:addons won't hit the network
++        prefs["extensions.webservice.discoverURL"] = "http://127.0.0.1:8888/extensions-dummy/discoveryURL"
++        # Make sure AddonRepository won't hit the network
++        prefs["extensions.getAddons.maxResults"] = 0
++        prefs["extensions.getAddons.get.url"] = "http://127.0.0.1:8888/extensions-dummy/repositoryGetURL"
++        prefs["extensions.getAddons.getWithPerformance.url"] = "http://127.0.0.1:8888/extensions-dummy/repositoryGetWithPerformanceURL"
++        prefs["extensions.getAddons.search.browseURL"] = "http://127.0.0.1:8888/extensions-dummy/repositoryBrowseURL"
++        prefs["extensions.getAddons.search.url"] = "http://127.0.0.1:8888/extensions-dummy/repositorySearchURL"
++        # Make sure that opening the plugins check page won't hit the network
++        prefs["plugins.update.url"] = "http://127.0.0.1:8888/plugins-dummy/updateCheckURL"
+ 
+-""" % reftestlist)
++        # Workaround for jsreftests.
++        if options.enablePrivilege:
++            prefs["capability.principal.codebase.p2.granted"] = "UniversalXPConnect"
++            prefs["capability.principal.codebase.p2.id"] = "http://%s:%s" % (options.remoteWebServer, options.httpPort))
+ 
+-        #workaround for jsreftests.
+-        if options.enablePrivilege:
+-            fhandle.write("""
+-user_pref("capability.principal.codebase.p2.granted", "UniversalXPConnect");
+-user_pref("capability.principal.codebase.p2.id", "http://%s:%s");
+-""" % (options.remoteWebServer, options.httpPort))
+-
+-        # Close the file
+-        fhandle.close()
++        # Set the extra prefs.
++        profile.set_preferences(prefs)
+ 
+         try:
+             self._devicemanager.pushDir(profileDir, options.remoteProfile)
+         except devicemanager.DMError:
+             print "Automation Error: Failed to copy profiledir to device"
+             raise
+ 
+     def copyExtraFilesToProfile(self, options, profileDir):
+diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftest.py
+--- a/layout/tools/reftest/runreftest.py
++++ b/layout/tools/reftest/runreftest.py
+@@ -10,16 +10,18 @@ import re, sys, shutil, os, os.path
+ SCRIPT_DIRECTORY = os.path.abspath(os.path.realpath(os.path.dirname(sys.argv[0])))
+ sys.path.insert(0, SCRIPT_DIRECTORY)
+ 
+ from automation import Automation
+ from automationutils import *
+ from optparse import OptionParser
+ from tempfile import mkdtemp
+ 
++import mozprofile
++
+ class RefTest(object):
+ 
+   oldcwd = os.getcwd()
+ 
+   def __init__(self, automation):
+     self.automation = automation
+ 
+   def getFullPath(self, path):
+@@ -37,65 +39,76 @@ class RefTest(object):
+         defaultManifestPath = os.path.join(path, 'crashtests.list')
+         if os.path.exists(defaultManifestPath):
+           path = defaultManifestPath
+     return path
+ 
+   def makeJSString(self, s):
+     return '"%s"' % re.sub(r'([\\"])', r'\\\1', s)
+ 
+-  def createReftestProfile(self, options, profileDir, manifest, server='localhost'):
++  def createReftestProfile(self, options, manifest, server='localhost'):
+     """
+       Sets up a profile for reftest.
+       'manifest' is the path to the reftest.list file we want to test with.  This is used in
+       the remote subclass in remotereftest.py so we can write it to a preference for the 
+       bootstrap extension.
+     """
+ 
+-    self.automation.setupPermissionsDatabase(profileDir,
+-      {'allowXULXBL': [(server, True), ('<file>', True)]})
++    locations = mozprofile.permissions.ServerLocations()
++    locations.add_host(server, port=0)
++    locations.add_host('<file>', port=0)
+ 
+     # Set preferences for communication between our command line arguments
+     # and the reftest harness.  Preferences that are required for reftest
+     # to work should instead be set in reftest-cmdline.js .
+-    prefsFile = open(os.path.join(profileDir, "user.js"), "a")
+-    prefsFile.write('user_pref("reftest.timeout", %d);\n' % (options.timeout * 1000))
+-
+-    if options.totalChunks != None:
+-      prefsFile.write('user_pref("reftest.totalChunks", %d);\n' % options.totalChunks)
+-    if options.thisChunk != None:
+-      prefsFile.write('user_pref("reftest.thisChunk", %d);\n' % options.thisChunk)
+-    if options.logFile != None:
+-      prefsFile.write('user_pref("reftest.logFile", "%s");\n' % options.logFile)
+-    if options.ignoreWindowSize != False:
+-      prefsFile.write('user_pref("reftest.ignoreWindowSize", true);\n')
+-    if options.filter != None:
+-      prefsFile.write('user_pref("reftest.filter", %s);\n' % self.makeJSString(options.filter))
+-    prefsFile.write('user_pref("reftest.focusFilterMode", %s);\n' % self.makeJSString(options.focusFilterMode))
++    prefs = {}
++    prefs['reftest.timeout'] = options.timeout * 1000
++    if options.totalChunks:
++      prefs['reftest.totalChunks'] = options.totalChunks
++    if options.thisChunk:
++      prefs['reftest.thisChunk'] = options.thisChunk
++    if options.logFile:
++      prefs['reftest.logFile'] = options.logFile
++    if options.ignoreWindowSize:
++      prefs['reftest.ignoreWindowSize'] = 'true'
++    if options.filter:
++      prefs['reftest.filter'] = self.makeJSString(options.filter)
++    prefs['reftest.focusFilterMode'] = self.makeJSString(options.focusFilterMode)
+ 
+     for v in options.extraPrefs:
+-      thispref = v.split("=")
++      thispref = v.split('=')
+       if len(thispref) < 2:
+         print "Error: syntax error in --setpref=" + v
+         sys.exit(1)
+-      part = 'user_pref("%s", %s);\n' % (thispref[0], thispref[1])
+-      prefsFile.write(part)
+-    prefsFile.close()
++        prefs[thispref[0]] = thispref[1]
+ 
+     # install the reftest extension bits into the profile
+-    self.automation.installExtension(os.path.join(SCRIPT_DIRECTORY, "reftest"),
+-                                                  profileDir,
+-                                                  "reftest@mozilla.org")
++    addons = []
++    addons.append(os.path.join(SCRIPT_DIRECTORY, "reftest"))
+ 
+     # I would prefer to use "--install-extension reftest/specialpowers", but that requires tight coordination with
+     # release engineering and landing on multiple branches at once.
+     if manifest.endswith('crashtests.list'):
+-      self.automation.installExtension(os.path.join(SCRIPT_DIRECTORY, "specialpowers"),
+-                                                    profileDir,
+-                                                    "special-powers@mozilla.org")
++      addons.append(os.path.join(SCRIPT_DIRECTORY, 'specialpowers'))
++
++    # Install distributed extensions, if application has any.
++    distExtDir = os.path.join(options.app[ : options.app.rfind(os.sep)], "distribution", "extensions")
++    if os.path.isdir(distExtDir):
++      for f in os.listdir(distExtDir):
++        addons.append(os.path.join(distExtDir, f))
++
++    # Install custom extensions.
++    for f in options.extensionsToInstall:
++      addons.append(self.getFullPath(f))
++
++    return mozprofile.profile.Profile(
++        addons=addons,
++        preferences=prefs,
++        locations=locations,
++    )
+ 
+   def buildBrowserEnv(self, options, profileDir):
+     browserEnv = self.automation.environment(xrePath = options.xrePath)
+     browserEnv["XPCOM_DEBUG_BREAK"] = "stack"
+ 
+     for v in options.environment:
+       ix = v.find("=")
+       if ix <= 0:
+@@ -111,25 +124,23 @@ class RefTest(object):
+   def cleanup(self, profileDir):
+     if profileDir:
+       shutil.rmtree(profileDir, True)
+ 
+   def runTests(self, testPath, options, cmdlineArgs = None):
+     debuggerInfo = getDebuggerInfo(self.oldcwd, options.debugger, options.debuggerArgs,
+         options.debuggerInteractive);
+ 
+-    profileDir = None
+     try:
+       reftestlist = self.getManifestPath(testPath)
+       if cmdlineArgs == None:
+         cmdlineArgs = ['-reftest', reftestlist]
+-      profileDir = mkdtemp()
++      profile = self.createReftestProfile(options, reftestlist)
++      profileDir = profile.profile # name makes more sense
+       self.copyExtraFilesToProfile(options, profileDir)
+-      self.createReftestProfile(options, profileDir, reftestlist)
+-      self.installExtensionsToProfile(options, profileDir)
+ 
+       # browser environment
+       browserEnv = self.buildBrowserEnv(options, profileDir)
+ 
+       self.automation.log.info("REFTEST INFO | runreftest.py | Running tests: start.\n")
+       status = self.automation.runApp(None, browserEnv, options.app, profileDir,
+                                  cmdlineArgs,
+                                  utilityPath = options.utilityPath,
+@@ -153,28 +164,16 @@ class RefTest(object):
+         shutil.copy2(abspath, profileDir)
+       elif os.path.isdir(abspath):
+         dest = os.path.join(profileDir, os.path.basename(abspath))
+         shutil.copytree(abspath, dest)
+       else:
+         self.automation.log.warning("WARNING | runreftest.py | Failed to copy %s to profile", abspath)
+         continue
+ 
+-  def installExtensionsToProfile(self, options, profileDir):
+-    "Install application distributed extensions and specified on the command line ones to testing profile."
+-    # Install distributed extensions, if application has any.
+-    distExtDir = os.path.join(options.app[ : options.app.rfind(os.sep)], "distribution", "extensions")
+-    if os.path.isdir(distExtDir):
+-      for f in os.listdir(distExtDir):
+-        self.automation.installExtension(os.path.join(distExtDir, f), profileDir)
+-
+-    # Install custom extensions.
+-    for f in options.extensionsToInstall:
+-      self.automation.installExtension(self.getFullPath(f), profileDir)
+-
+ 
+ class ReftestOptions(OptionParser):
+ 
+   def __init__(self, automation):
+     self._automation = automation
+     OptionParser.__init__(self)
+     defaults = {}
+ 

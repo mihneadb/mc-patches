@@ -1,0 +1,6 @@
+# HG changeset patch
+# Parent a050b8209e8d74ec6888824b9d138a1a2dfc064e
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+try: -b do -p linux,linux64,macosx64,win32 -u xpcshell -t none
+
+
