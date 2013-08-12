@@ -1,10 +1,11 @@
 # HG changeset patch
-# Parent be648596f6f35552131e864f0afd1ad1faaf250a
+# Parent f28aeb3d28298dd4122efffbcdacb30b8cdd439e
+Bug 887054 - Add support for --sequential to mach, r=gps
 
 diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.py
 --- a/testing/xpcshell/mach_commands.py
 +++ b/testing/xpcshell/mach_commands.py
-@@ -40,17 +40,17 @@ class XPCShellRunner(MozbuildObject):
+@@ -40,26 +40,26 @@ class XPCShellRunner(MozbuildObject):
      """Run xpcshell tests."""
      def run_suite(self, **kwargs):
          manifest = os.path.join(self.topobjdir, '_tests', 'xpcshell',
@@ -23,6 +24,16 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
  
          if test_file == 'all':
              self.run_suite(debug=debug, interactive=interactive,
+-                keep_going=keep_going, shuffle=shuffle)
++                keep_going=keep_going, shuffle=shuffle, sequential=sequential)
+             return
+ 
+         path_arg = self._wrap_path_argument(test_file)
+ 
+         test_obj_dir = os.path.join(self.topobjdir, '_tests', 'xpcshell',
+             path_arg.relpath())
+         if os.path.isfile(test_obj_dir):
+             test_obj_dir = mozpack.path.dirname(test_obj_dir)
 @@ -76,27 +76,28 @@ class XPCShellRunner(MozbuildObject):
                  'It is possible you received this error because the tree is '
                  'not built or tests are not enabled.')

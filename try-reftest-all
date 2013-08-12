@@ -1,6 +1,6 @@
 # HG changeset patch
-# Parent d29e4c7b255ffa42beb8229f6682c1a8fad4578b
+# Parent 47bd850cb89b3cd03b180d75fba6670ed40701a4
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
-try: -b do -p all -u reftest,reftest-ipc,reftest-no-accel,crashtest,crashtest-ipc,jsreftest -t none
+try: -b o -p all -u reftest,reftest-ipc,reftest-no-accel,crashtest,crashtest-ipc,jsreftest,plain-reftest-1,plain-reftest-2,plain-reftest-3,plain-reftest-4,jsreftest-1,jsreftest-2,jsreftest-3,crashtest-1,crashtest-2,crashtest-3,reftest-1,reftest-2,reftest-3,reftest-4,reftest-5,reftest-6,reftest-7,reftest-8,reftest-9,reftest-10 -t none
 
 

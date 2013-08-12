@@ -1,6 +1,5 @@
 # HG changeset patch
-# Parent 050c8950929834968f7435ec5a1605392f17523f
+# Parent 2e0365fa01bc9b3d8be201f0f1aaede716499e4e
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 try: -b do -p android,android-armv6,android-noion,android-x86,ics_armv7a_gecko,emulator,panda,unagi -u xpcshell -t none
-
 

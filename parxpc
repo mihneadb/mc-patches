@@ -2,9 +2,9 @@
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 # Date 1374287234 25200
 #      Fri Jul 19 19:27:14 2013 -0700
-# Node ID 5e10f6c1edd4d4fbfd24a7c63cf1e5a674be9d87
-# Parent 129ce98f4cb24f84d8d18d2563aaade4facb2a76
-Bug 887054 - Parallelize xpcshell
+# Node ID aba8dd1074c4169ce597794d52532ed32e70a1ca
+# Parent 47bd850cb89b3cd03b180d75fba6670ed40701a4
+Bug 887054 - Parallelize xpcshell harness
 
 diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexpcshelltests.py
 --- a/testing/xpcshell/remotexpcshelltests.py
@@ -59,7 +59,7 @@ diff --git a/testing/xpcshell/runtestsb2g.py b/testing/xpcshell/runtestsb2g.py
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py
 +++ b/testing/xpcshell/runxpcshelltests.py
-@@ -1,31 +1,42 @@
+@@ -1,31 +1,43 @@
  #!/usr/bin/env python
  #
  # This Source Code Form is subject to the terms of the Mozilla Public
@@ -94,7 +94,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
  HARNESS_TIMEOUT = 5 * 60
  
-+NUM_THREADS = max(4, int(cpu_count() * 4))
++# benchmarking on tbpl revealed that this works best for now
++NUM_THREADS = int(cpu_count() * 4)
 +
  # --------------------------------------------------------------
  # TODO: this is a hack for mozbase without virtualenv, remove with bug 849900
@@ -104,7 +105,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
  if os.path.isdir(mozbase):
      for package in os.listdir(mozbase):
-@@ -44,16 +55,508 @@ def parse_json(j):
+@@ -44,16 +56,517 @@ def parse_json(j):
      return eval(j, {'true':True,'false':False,'null':None})
  
  """ Control-C handling """
@@ -387,19 +388,27 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +                self.log.info(line)
 +        self.log.info("<<<<<<<")
 +
-+    def cleanupDir(self, directory, name, stdout, xunit_result):
++    def cleanupDir(self, directory, name, stdout, xunit_result, try_count=0):
++        TRY_LIMIT = 25 # up to TRY_LIMIT seconds timeout, because the Windows
++                        # filesystem is slow to react to the changes
 +        try:
 +            self.removeDir(directory)
++            return True
 +        except Exception:
 +            self.log.info("TEST-INFO | Failed to remove directory: %s. Waiting." % directory)
 +
 +            # We suspect the filesystem may still be making changes. Wait a
 +            # little bit and try again.
-+            time.sleep(5)
++            time.sleep(1)
 +
 +            try:
 +                self.removeDir(directory)
++                return True
 +            except Exception:
++                # we try this a few times - needed on Windows, at least
++                if try_count < TRY_LIMIT:
++                    return self.cleanupDir(directory, name, stdout, xunit_result, try_count + 1)
++
 +                message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
 +                self.log.error(message)
 +                self.print_stdout(stdout)
@@ -412,6 +421,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +                    "message": message,
 +                    "text": "%s\n%s" % (stdout, traceback.format_exc())
 +                }
++                return False
 +
 +    def run_test(self):
 +        """Run an individual xpcshell test."""
@@ -613,7 +623,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
      def __init__(self, log=None):
          """ Init logging and node status """
          if log:
-@@ -167,27 +670,16 @@ class XPCShellTests(object):
+@@ -167,27 +680,16 @@ class XPCShellTests(object):
          else: # unix or linux?
              if not "LD_LIBRARY_PATH" in self.env or self.env["LD_LIBRARY_PATH"] is None:
                  self.env["LD_LIBRARY_PATH"] = self.xrePath
@@ -641,7 +651,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          if self.interactive:
              pStdout = None
              pStderr = None
-@@ -198,61 +690,16 @@ class XPCShellTests(object):
+@@ -198,61 +700,16 @@ class XPCShellTests(object):
              else:
                  if sys.platform == 'os2emx':
                      pStdout = None
@@ -703,7 +713,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
            |singleFile| will be the optional test only, or |None|.
          """
          self.singleFile = None
-@@ -268,189 +715,23 @@ class XPCShellTests(object):
+@@ -268,189 +725,23 @@ class XPCShellTests(object):
                      self.testPath = self.testPath.rsplit('/', 1)
                      self.singleFile = self.testPath[1]
                      self.testPath = self.testPath[0]
@@ -893,7 +903,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          nodeBin = None
  
          # We try to find the node executable in the path given to us by the user in
-@@ -593,20 +874,16 @@ class XPCShellTests(object):
+@@ -593,20 +884,16 @@ class XPCShellTests(object):
              testsuite.appendChild(testcase)
  
          testsuite.setAttribute("tests", str(total))
@@ -914,7 +924,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              testgroup='b2g xpcshell testsuite',
              operating_system='android',
              arch='emulator',
-@@ -639,31 +916,39 @@ class XPCShellTests(object):
+@@ -639,31 +926,39 @@ class XPCShellTests(object):
              t.finish(result=outcome, time_end=duration, output=output)
  
              collection.append(t)
@@ -963,7 +973,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |xpcshell|, is the xpcshell executable to use to run the tests.
          |xrePath|, if provided, is the path to the XRE to use.
          |appPath|, if provided, is the path to an application directory.
-@@ -752,35 +1037,34 @@ class XPCShellTests(object):
+@@ -752,35 +1047,34 @@ class XPCShellTests(object):
          self.logfiles = logfiles
          self.totalChunks = totalChunks
          self.thisChunk = thisChunk
@@ -1002,7 +1012,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  return False
              self.mozInfo = parse_json(open(mozInfoFile).read())
          mozinfo.update(self.mozInfo)
-@@ -799,302 +1083,152 @@ class XPCShellTests(object):
+@@ -799,302 +1093,152 @@ class XPCShellTests(object):
  
          pStdout, pStderr = self.getPipes()
  
@@ -1405,7 +1415,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          addCommonOptions(self)
          self.add_option("--app-path",
                          type="string", dest="appPath", default=None,
-@@ -1115,16 +1249,19 @@ class XPCShellOptions(OptionParser):
+@@ -1115,16 +1259,19 @@ class XPCShellOptions(OptionParser):
                          action="store_true", dest="logfiles", default=True,
                          help="create log files (default, only used to override --no-logfiles)")
          self.add_option("--manifest",
@@ -1448,18 +1458,3 @@ diff --git a/testing/xpcshell/selftest.py b/testing/xpcshell/selftest.py
  
      def _assertLog(self, s, expected):
          l = self.log.getvalue()
-@@ -438,13 +439,14 @@ tail =
-         self.assertEqual(len(testcases), 3)
- 
-         for testcase in testcases:
-             attributes = testcase.keys()
-             self.assertTrue("classname" in attributes)
-             self.assertTrue("name" in attributes)
-             self.assertTrue("time" in attributes)
- 
-+        #import pdb; pdb.set_trace()
-         self.assertTrue(testcases[1].find("failure") is not None)
-         self.assertTrue(testcases[2].find("skipped") is not None)
- 
- if __name__ == "__main__":
-     unittest.main()

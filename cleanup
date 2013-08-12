@@ -1,0 +1,137 @@
+# HG changeset patch
+# Parent f9f6578d0435e7f78475843cf0a6d2fbc5890c17
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 887054 - Clean up slacker directories after the test run ends
+
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -63,23 +63,24 @@ def parse_json(j):
+ 
+ """ Control-C handling """
+ gotSIGINT = False
+ def markGotSIGINT(signum, stackFrame):
+     global gotSIGINT
+     gotSIGINT = True
+ 
+ class XPCShellTestThread(Thread):
+-    def __init__(self, test_object, sem, tests_root_dir=None, app_dir_key=None,
+-            interactive=False, verbose=False, pStdout=None, pStderr=None,
+-            keep_going=False, log=None, **kwargs):
++    def __init__(self, test_object, sem, cleanup_dir_list, tests_root_dir=None,
++            app_dir_key=None, interactive=False, verbose=False, pStdout=None,
++            pStderr=None, keep_going=False, log=None, **kwargs):
+         Thread.__init__(self)
+         self.daemon = True
+ 
+         self.test_object = test_object
++        self.cleanup_dir_list = cleanup_dir_list
+ 
+         self.appPath = kwargs.get('appPath')
+         self.xrePath = kwargs.get('xrePath')
+         self.testingModulesDir = kwargs.get('testingModulesDir')
+         self.debuggerInfo = kwargs.get('debuggerInfo')
+         self.pluginsPath = kwargs.get('pluginsPath')
+         self.httpdManifest = kwargs.get('httpdManifest')
+         self.httpdJSPath = kwargs.get('httpdJSPath')
+@@ -338,17 +339,17 @@ class XPCShellTestThread(Thread):
+         self.log.info(">>>>>>>")
+         if stdout:
+             for line in stdout.splitlines():
+                 self.log.info(line)
+         self.log.info("<<<<<<<")
+ 
+     def cleanupDir(self, directory, name, stdout, xunit_result, try_count=0):
+         TRY_LIMIT = 25 # up to TRY_LIMIT seconds timeout, because the Windows
+-                        # filesystem is slow to react to the changes
++                       # filesystem is slow to react to the changes
+         try:
+             self.removeDir(directory)
+             return True
+         except Exception:
+             self.log.info("TEST-INFO | Failed to remove directory: %s. Waiting." % directory)
+ 
+             # We suspect the filesystem may still be making changes. Wait a
+             # little bit and try again.
+@@ -357,16 +358,21 @@ class XPCShellTestThread(Thread):
+             try:
+                 self.removeDir(directory)
+                 return True
+             except Exception:
+                 # we try this a few times - needed on Windows, at least
+                 if try_count < TRY_LIMIT:
+                     return self.cleanupDir(directory, name, stdout, xunit_result, try_count + 1)
+ 
++                # we try again later at the end of the run for plugin dirs (because windows!)
++                if directory == self.pluginsDir:
++                    self.cleanup_dir_list.append(directory)
++                    return False
++
+                 LOG_MUTEX.acquire()
+                 message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
+                 self.log.error(message)
+                 self.print_stdout(stdout)
+                 self.print_stdout(traceback.format_exc())
+                 LOG_MUTEX.release()
+ 
+                 self.failCount += 1
+@@ -1123,16 +1129,17 @@ class XPCShellTests(object):
+         pStdout, pStderr = self.getPipes()
+ 
+         self.buildTestList()
+ 
+         if shuffle:
+             random.shuffle(self.alltests)
+ 
+         self.xunitResults = []
++        self.cleanup_dir_list = []
+ 
+         kwargs = {
+             'appPath': self.appPath,
+             'xrePath': self.xrePath,
+             'testingModulesDir': self.testingModulesDir,
+             'debuggerInfo': self.debuggerInfo,
+             'pluginsPath': self.pluginsPath,
+             'httpdManifest': self.httpdManifest,
+@@ -1157,17 +1164,17 @@ class XPCShellTests(object):
+             if self.singleFile and not name.endswith(self.singleFile):
+                 continue
+ 
+             if self.testPath and name.find(self.testPath) == -1:
+                 continue
+ 
+             self.testCount += 1
+ 
+-            test = testClass(test_object, self.sem,
++            test = testClass(test_object, self.sem, self.cleanup_dir_list,
+                     tests_root_dir=testsRootDir, app_dir_key=appDirKey,
+                     interactive=interactive, verbose=verbose, pStdout=pStdout,
+                     pStderr=pStderr, keep_going=keepGoing, log=self.log,
+                     mobileArgs=mobileArgs, **kwargs)
+             if 'run-sequentially' in test_object or self.sequential:
+                 sequential_tests.append(test)
+             else:
+                 tests_queue.append(test)
+@@ -1231,16 +1238,22 @@ class XPCShellTests(object):
+                 test.join()
+                 # did the test encounter any exception?
+                 if test.exception:
+                     raise test.exception
+                 keep_going = test.keep_going
+                 self.addTestResults(test)
+ 
+         self.shutdownNode()
++        # clean up any slacker directories that might be lying around (Windows)
++        for directory in self.cleanup_dir_list:
++            try:
++                shutil.rmtree(directory)
++            except:
++                pass
+ 
+         if exceptions:
+             self.log.info("INFO | Following exceptions were raised:")
+             for t in tracebacks:
+                 self.log.error(t)
+             raise exceptions[0]
+ 
+         if self.testCount == 0:

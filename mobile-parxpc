@@ -3,13 +3,13 @@
 # Date 1374800539 25200
 #      Thu Jul 25 18:02:19 2013 -0700
 # Node ID 8b60b46735de8dd9ee411afc3d0affd60dfc0827
-# Parent 32aa2b64eaeb62901ca053f91ca83627988d1180
-Bug 887054 - Parallelize xpcshell
+# Parent 748f51ce8405f6ef6afe230eb92ac46f479f1a2d
+Bug 887054 - Adapt mobile xpcshell harnesses to the changes from parxpc
 
 diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexpcshelltests.py
 --- a/testing/xpcshell/remotexpcshelltests.py
 +++ b/testing/xpcshell/remotexpcshelltests.py
-@@ -1,257 +1,53 @@
+@@ -1,276 +1,69 @@
  #!/usr/bin/env python
  #
  # This Source Code Form is subject to the terms of the Mozilla Public
@@ -282,10 +282,12 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
          # make sure the temp dir exists
          if not self.device.dirExists(self.remoteTmpDir):
              self.device.mkDir(self.remoteTmpDir)
- 
-         self.env["XPCSHELL_TEST_TEMP_DIR"] = self.remoteTmpDir
-         if self.interactive:
-@@ -260,17 +56,17 @@ class XPCShellRemote(xpcshell.XPCShellTe
+-
+-        self.env["XPCSHELL_TEST_TEMP_DIR"] = self.remoteTmpDir
+-        if self.interactive:
+-            self.log.info("TEST-INFO | temp dir is %s" % self.remoteTmpDir)
++        # env var is set in buildEnvironment
+         return self.remoteTmpDir
  
      def setupPluginsDir(self):
          if not os.path.isdir(self.pluginsPath):
@@ -304,7 +306,7 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
      def setupProfileDir(self):
          self.device.removeDir(self.profileDir)
          self.device.mkDir(self.profileDir)
-@@ -278,19 +74,57 @@ class XPCShellRemote(xpcshell.XPCShellTe
+@@ -278,58 +71,57 @@ class XPCShellRemote(xpcshell.XPCShellTe
              self.log.info("TEST-INFO | profile dir is %s" % self.profileDir)
          return self.profileDir
  
@@ -323,14 +325,50 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
 +                f = f.strip()
 +                if len(f) < 1:
 +                    continue
-+
+ 
+-    def setLD_LIBRARY_PATH(self, env):
+-        env["LD_LIBRARY_PATH"]=self.remoteBinDir
 +                path = remoteJoin(self.remoteHere, f)
 +                if not self.device.fileExists(path):
 +                    raise Exception('%s file does not exist: %s' % ( kind,
 +                        path))
-+
+ 
+-    def pushWrapper(self):
+-        # Rather than executing xpcshell directly, this wrapper script is
+-        # used. By setting environment variables and the cwd in the script,
+-        # the length of the per-test command line is shortened. This is
+-        # often important when using ADB, as there is a limit to the length
+-        # of the ADB command line.
+-        localWrapper = tempfile.mktemp()
+-        f = open(localWrapper, "w")
+-        f.write("#!/system/bin/sh\n")
+-        for envkey, envval in self.env.iteritems():
+-            f.write("export %s=%s\n" % (envkey, envval))
+-        f.write("cd $1\n")
+-        f.write("echo xpcw: cd $1\n")
+-        f.write("shift\n")
+-        f.write("echo xpcw: xpcshell \"$@\"\n")
+-        f.write("%s/xpcshell \"$@\"\n" % self.remoteBinDir)
+-        f.close()
+-        remoteWrapper = self.remoteJoin(self.remoteBinDir, "xpcw")
+-        self.device.pushFile(localWrapper, remoteWrapper)
+-        os.remove(localWrapper)
+-        self.device.chmodDir(self.remoteBinDir)
 +                yield path
-+
+ 
+-    def buildEnvironment(self):
+-        self.env = {}
+-        self.buildCoreEnvironment()
+-        self.setLD_LIBRARY_PATH(self.env)
+-        self.env["MOZ_LINKER_CACHE"]=self.remoteBinDir
+-        if self.options.localAPK and self.appRoot:
+-            self.env["GRE_HOME"]=self.appRoot
+-        self.env["XPCSHELL_TEST_PROFILE_DIR"]=self.profileDir
+-        self.env["TMPDIR"]=self.remoteTmpDir
+-        self.env["HOME"]=self.profileDir
+-        self.setupTempDir()
+-        if self.options.setup:
+-            self.pushWrapper()
 +        self.remoteHere = self.remoteForLocal(test['here'])
 +
 +        return (list(sanitize_list(test['head'], 'head')),
@@ -358,52 +396,14 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
 +              self.remoteDebuggerArgs,
 +              self.xpcsCmd]
  
-     def setLD_LIBRARY_PATH(self, env):
-         env["LD_LIBRARY_PATH"]=self.remoteBinDir
- 
-     def pushWrapper(self):
-         # Rather than executing xpcshell directly, this wrapper script is
-         # used. By setting environment variables and the cwd in the script,
-         # the length of the per-test command line is shortened. This is
-@@ -302,31 +136,31 @@ class XPCShellRemote(xpcshell.XPCShellTe
-         for envkey, envval in self.env.iteritems():
-             f.write("export %s=%s\n" % (envkey, envval))
-         f.write("cd $1\n")
-         f.write("echo xpcw: cd $1\n")
-         f.write("shift\n")
-         f.write("echo xpcw: xpcshell \"$@\"\n")
-         f.write("%s/xpcshell \"$@\"\n" % self.remoteBinDir)
-         f.close()
--        remoteWrapper = self.remoteJoin(self.remoteBinDir, "xpcw")
-+        remoteWrapper = remoteJoin(self.remoteBinDir, "xpcw")
-         self.device.pushFile(localWrapper, remoteWrapper)
-         os.remove(localWrapper)
-         self.device.chmodDir(self.remoteBinDir)
- 
-     def buildEnvironment(self):
-         self.env = {}
-         self.buildCoreEnvironment()
-         self.setLD_LIBRARY_PATH(self.env)
--        self.env["MOZ_LINKER_CACHE"]=self.remoteBinDir
-+        self.env["MOZ_LINKER_CACHE"] = self.remoteBinDir
-         if self.options.localAPK and self.appRoot:
--            self.env["GRE_HOME"]=self.appRoot
--        self.env["XPCSHELL_TEST_PROFILE_DIR"]=self.profileDir
--        self.env["TMPDIR"]=self.remoteTmpDir
--        self.env["HOME"]=self.profileDir
-+            self.env["GRE_HOME"] = self.appRoot
-+        self.env["XPCSHELL_TEST_PROFILE_DIR"] = self.profileDir
-+        self.env["TMPDIR"] = self.remoteTmpDir
-+        self.env["HOME"] = self.profileDir
-         self.setupTempDir()
-         if self.options.setup:
-             self.pushWrapper()
- 
      def launchProcess(self, cmd, stdout, stderr, env, cwd):
          cmd.insert(1, self.remoteHere)
          outputFile = "xpcshelloutput"
          f = open(outputFile, "w+")
-@@ -362,32 +196,213 @@ class XPCShellRemote(xpcshell.XPCShellTe
+         self.shellReturnCode = self.device.shell(cmd, f)
+         f.close()
+         # The device manager may have timed out waiting for xpcshell.
+@@ -362,32 +154,255 @@ class XPCShellRemote(xpcshell.XPCShellTe
          else:
              return -1
  
@@ -476,6 +476,7 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
 +            self.setupUtilities()
 +            self.setupModules()
 +            self.setupTestDir()
++        self.remoteAPK = None
 +        if options.localAPK:
 +            self.remoteAPK = remoteJoin(self.remoteBinDir, os.path.basename(options.localAPK))
 +            self.setAppRoot()
@@ -493,6 +494,47 @@ diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexp
 +            'profileDir': self.profileDir,
 +            'remoteTmpDir': self.remoteTmpDir,
 +        }
++        if self.remoteAPK:
++            self.mobileArgs['remoteAPK'] = self.remoteAPK
++
++    def setLD_LIBRARY_PATH(self, env):
++        env["LD_LIBRARY_PATH"]=self.remoteBinDir
++
++    def pushWrapper(self):
++        # Rather than executing xpcshell directly, this wrapper script is
++        # used. By setting environment variables and the cwd in the script,
++        # the length of the per-test command line is shortened. This is
++        # often important when using ADB, as there is a limit to the length
++        # of the ADB command line.
++        localWrapper = tempfile.mktemp()
++        f = open(localWrapper, "w")
++        f.write("#!/system/bin/sh\n")
++        for envkey, envval in self.env.iteritems():
++            f.write("export %s=%s\n" % (envkey, envval))
++        f.write("cd $1\n")
++        f.write("echo xpcw: cd $1\n")
++        f.write("shift\n")
++        f.write("echo xpcw: xpcshell \"$@\"\n")
++        f.write("%s/xpcshell \"$@\"\n" % self.remoteBinDir)
++        f.close()
++        remoteWrapper = remoteJoin(self.remoteBinDir, "xpcw")
++        self.device.pushFile(localWrapper, remoteWrapper)
++        os.remove(localWrapper)
++        self.device.chmodDir(self.remoteBinDir)
++
++    def buildEnvironment(self):
++        self.env = {}
++        self.buildCoreEnvironment()
++        self.setLD_LIBRARY_PATH(self.env)
++        self.env["MOZ_LINKER_CACHE"] = self.remoteBinDir
++        if self.options.localAPK and self.appRoot:
++            self.env["GRE_HOME"] = self.appRoot
++        self.env["XPCSHELL_TEST_PROFILE_DIR"] = self.profileDir
++        self.env["TMPDIR"] = self.remoteTmpDir
++        self.env["HOME"] = self.profileDir
++        self.env["XPCSHELL_TEST_TEMP_DIR"] = self.remoteTmpDir
++        if self.options.setup:
++            self.pushWrapper()
 +
 +    def setAppRoot(self):
 +        # Determine the application root directory associated with the package
@@ -757,7 +799,7 @@ diff --git a/testing/xpcshell/runtestsb2g.py b/testing/xpcshell/runtestsb2g.py
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py
 +++ b/testing/xpcshell/runxpcshelltests.py
-@@ -961,24 +961,24 @@ class XPCShellTests(object):
+@@ -938,24 +938,24 @@ class XPCShellTests(object):
  
      def addTestResults(self, test):
          self.passCount += test.passCount
@@ -784,7 +826,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |symbolsPath|, if provided is the path to a directory containing
            breakpad symbols for processing crashes in tests.
          |manifest|, if provided, is a file containing a list of
-@@ -1145,27 +1145,30 @@ class XPCShellTests(object):
+@@ -1122,27 +1122,30 @@ class XPCShellTests(object):
              if self.singleFile and not name.endswith(self.singleFile):
                  continue
  
