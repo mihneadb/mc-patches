@@ -1,0 +1,14 @@
+parxpc
+parxpc_atomicLogging.patch
+mobile-parxpc
+cleanup
+intermittents
+imgtools
+try-xpc-all
+mach_seq
+reftestprof
+try-reftest-all
+try-xpc-desktop-all
+try-xpc-mobile
+jsref
+try-reftest-desktop
