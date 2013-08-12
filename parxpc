@@ -3,13 +3,15 @@
 # Date 1374287234 25200
 #      Fri Jul 19 19:27:14 2013 -0700
 # Node ID aba8dd1074c4169ce597794d52532ed32e70a1ca
-# Parent 47bd850cb89b3cd03b180d75fba6670ed40701a4
+# Parent 9ab28833eda00abf3dd3099f2a21798691887c74
 Bug 887054 - Parallelize xpcshell harness
+* * *
+Bug 887054 - Clean up slacker directories after the test run ends
 
 diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexpcshelltests.py
 --- a/testing/xpcshell/remotexpcshelltests.py
 +++ b/testing/xpcshell/remotexpcshelltests.py
-@@ -512,16 +512,19 @@ def main():
+@@ -517,16 +517,19 @@ def main():
              sys.exit(1)
  
      if options.interactive and not options.testPath:
@@ -105,7 +107,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
  if os.path.isdir(mozbase):
      for package in os.listdir(mozbase):
-@@ -44,16 +56,517 @@ def parse_json(j):
+@@ -44,16 +56,523 @@ def parse_json(j):
      return eval(j, {'true':True,'false':False,'null':None})
  
  """ Control-C handling """
@@ -115,13 +117,14 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
      gotSIGINT = True
  
 +class XPCShellTestThread(Thread):
-+    def __init__(self, test_object, sem, tests_root_dir=None, app_dir_key=None,
-+            interactive=False, verbose=False, pStdout=None, pStderr=None,
-+            keep_going=False, log=None, **kwargs):
++    def __init__(self, test_object, sem, cleanup_dir_list, tests_root_dir=None,
++            app_dir_key=None, interactive=False, verbose=False, pStdout=None,
++            pStderr=None, keep_going=False, log=None, **kwargs):
 +        Thread.__init__(self)
 +        self.daemon = True
 +
 +        self.test_object = test_object
++        self.cleanup_dir_list = cleanup_dir_list
 +
 +        self.appPath = kwargs.get('appPath')
 +        self.xrePath = kwargs.get('xrePath')
@@ -390,7 +393,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +
 +    def cleanupDir(self, directory, name, stdout, xunit_result, try_count=0):
 +        TRY_LIMIT = 25 # up to TRY_LIMIT seconds timeout, because the Windows
-+                        # filesystem is slow to react to the changes
++                       # filesystem is slow to react to the changes
 +        try:
 +            self.removeDir(directory)
 +            return True
@@ -408,6 +411,11 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +                # we try this a few times - needed on Windows, at least
 +                if try_count < TRY_LIMIT:
 +                    return self.cleanupDir(directory, name, stdout, xunit_result, try_count + 1)
++
++                # we try again later at the end of the run for plugin dirs (because windows!)
++                if directory == self.pluginsDir:
++                    self.cleanup_dir_list.append(directory)
++                    return False
 +
 +                message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
 +                self.log.error(message)
@@ -623,7 +631,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
      def __init__(self, log=None):
          """ Init logging and node status """
          if log:
-@@ -167,27 +680,16 @@ class XPCShellTests(object):
+@@ -167,27 +686,16 @@ class XPCShellTests(object):
          else: # unix or linux?
              if not "LD_LIBRARY_PATH" in self.env or self.env["LD_LIBRARY_PATH"] is None:
                  self.env["LD_LIBRARY_PATH"] = self.xrePath
@@ -651,7 +659,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          if self.interactive:
              pStdout = None
              pStderr = None
-@@ -198,61 +700,16 @@ class XPCShellTests(object):
+@@ -198,61 +706,16 @@ class XPCShellTests(object):
              else:
                  if sys.platform == 'os2emx':
                      pStdout = None
@@ -713,7 +721,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
            |singleFile| will be the optional test only, or |None|.
          """
          self.singleFile = None
-@@ -268,189 +725,23 @@ class XPCShellTests(object):
+@@ -268,189 +731,23 @@ class XPCShellTests(object):
                      self.testPath = self.testPath.rsplit('/', 1)
                      self.singleFile = self.testPath[1]
                      self.testPath = self.testPath[0]
@@ -903,7 +911,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          nodeBin = None
  
          # We try to find the node executable in the path given to us by the user in
-@@ -593,20 +884,16 @@ class XPCShellTests(object):
+@@ -593,20 +890,16 @@ class XPCShellTests(object):
              testsuite.appendChild(testcase)
  
          testsuite.setAttribute("tests", str(total))
@@ -924,7 +932,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              testgroup='b2g xpcshell testsuite',
              operating_system='android',
              arch='emulator',
-@@ -639,31 +926,39 @@ class XPCShellTests(object):
+@@ -639,31 +932,39 @@ class XPCShellTests(object):
              t.finish(result=outcome, time_end=duration, output=output)
  
              collection.append(t)
@@ -973,7 +981,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |xpcshell|, is the xpcshell executable to use to run the tests.
          |xrePath|, if provided, is the path to the XRE to use.
          |appPath|, if provided, is the path to an application directory.
-@@ -752,35 +1047,34 @@ class XPCShellTests(object):
+@@ -752,35 +1053,34 @@ class XPCShellTests(object):
          self.logfiles = logfiles
          self.totalChunks = totalChunks
          self.thisChunk = thisChunk
@@ -1012,7 +1020,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  return False
              self.mozInfo = parse_json(open(mozInfoFile).read())
          mozinfo.update(self.mozInfo)
-@@ -799,302 +1093,152 @@ class XPCShellTests(object):
+@@ -799,302 +1099,162 @@ class XPCShellTests(object):
  
          pStdout, pStderr = self.getPipes()
  
@@ -1023,6 +1031,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
 -        xunitResults = []
 +        self.xunitResults = []
++        self.cleanup_dir_list = []
  
 -        for test in self.alltests:
 -            name = test['path']
@@ -1063,7 +1072,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 -                tests_root_dir=testsRootDir, app_dir_key=appDirKey,
 -                interactive=interactive, verbose=verbose, pStdout=pStdout,
 -                pStderr=pStderr, keep_going=keepGoing)
-+            test = XPCShellTestThread(test_object, self.sem,
++            test = XPCShellTestThread(test_object, self.sem, self.cleanup_dir_list,
 +                    tests_root_dir=testsRootDir, app_dir_key=appDirKey,
 +                    interactive=interactive, verbose=verbose, pStdout=pStdout,
 +                    pStderr=pStderr, keep_going=keepGoing, log=self.log,
@@ -1136,13 +1145,22 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +                self.addTestResults(test)
 +
          self.shutdownNode()
- 
++        # Clean up any slacker directories that might be lying around (Windows).
++        # Some might fail because of windows taking too long to unlock them.
++        # We don't do anything if this fails because the test slaves will have
++        # their $TEMP dirs cleaned up on reboot anyway.
++        for directory in self.cleanup_dir_list:
++            try:
++                shutil.rmtree(directory)
++            except:
++                self.log.info("INFO | %s could not be cleaned up." % directory)
++
 +        if exceptions:
 +            self.log.info("INFO | Following exceptions were raised:")
 +            for t in tracebacks:
 +                self.log.error(t)
 +            raise exceptions[0]
-+
+ 
          if self.testCount == 0:
              self.log.error("TEST-UNEXPECTED-FAIL | runxpcshelltests.py | No tests run. Did you pass an invalid --test-path?")
              self.failCount = 1
@@ -1415,7 +1433,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          addCommonOptions(self)
          self.add_option("--app-path",
                          type="string", dest="appPath", default=None,
-@@ -1115,16 +1259,19 @@ class XPCShellOptions(OptionParser):
+@@ -1115,16 +1275,19 @@ class XPCShellOptions(OptionParser):
                          action="store_true", dest="logfiles", default=True,
                          help="create log files (default, only used to override --no-logfiles)")
          self.add_option("--manifest",

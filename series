@@ -1,7 +1,6 @@
 parxpc
-parxpc_atomicLogging.patch
 mobile-parxpc
-cleanup
+parxpc_atomicLogging.patch
 intermittents
 imgtools
 try-xpc-all
