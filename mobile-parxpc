@@ -3,7 +3,7 @@
 # Date 1374800539 25200
 #      Thu Jul 25 18:02:19 2013 -0700
 # Node ID 8b60b46735de8dd9ee411afc3d0affd60dfc0827
-# Parent f307420f8e304526ad78d32d00e10a4f723a632c
+# Parent a587326a1f8f272cebd0dd20ee7b72e5e79dead1
 Bug 887054 - Adapt mobile xpcshell harnesses to the changes from parxpc
 
 diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexpcshelltests.py
@@ -804,7 +804,7 @@ diff --git a/testing/xpcshell/runtestsb2g.py b/testing/xpcshell/runtestsb2g.py
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py
 +++ b/testing/xpcshell/runxpcshelltests.py
-@@ -950,24 +950,24 @@ class XPCShellTests(object):
+@@ -942,24 +942,24 @@ class XPCShellTests(object):
  
      def addTestResults(self, test):
          self.passCount += test.passCount
@@ -831,7 +831,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |symbolsPath|, if provided is the path to a directory containing
            breakpad symbols for processing crashes in tests.
          |manifest|, if provided, is a file containing a list of
-@@ -1135,27 +1135,30 @@ class XPCShellTests(object):
+@@ -1132,27 +1132,30 @@ class XPCShellTests(object):
              if self.singleFile and not name.endswith(self.singleFile):
                  continue
  
@@ -840,8 +840,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
              self.testCount += 1
  
--            test = XPCShellTestThread(test_object, self.sem, self.cleanup_dir_list,
-+            test = testClass(test_object, self.sem, self.cleanup_dir_list,
+-            test = XPCShellTestThread(test_object, self.event, self.cleanup_dir_list,
++            test = testClass(test_object, self.event, self.cleanup_dir_list,
                      tests_root_dir=testsRootDir, app_dir_key=appDirKey,
                      interactive=interactive, verbose=verbose, pStdout=pStdout,
                      pStderr=pStderr, keep_going=keepGoing, log=self.log,

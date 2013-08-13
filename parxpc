@@ -3,10 +3,8 @@
 # Date 1374287234 25200
 #      Fri Jul 19 19:27:14 2013 -0700
 # Node ID aba8dd1074c4169ce597794d52532ed32e70a1ca
-# Parent 9ab28833eda00abf3dd3099f2a21798691887c74
-Bug 887054 - Parallelize xpcshell harness
-* * *
-Bug 887054 - Clean up slacker directories after the test run ends
+# Parent 3d20597e0a07b9913d62948f5568052045111352
+Bug 887054 - Parallelize desktop xpcshell harness
 
 diff --git a/testing/xpcshell/remotexpcshelltests.py b/testing/xpcshell/remotexpcshelltests.py
 --- a/testing/xpcshell/remotexpcshelltests.py
@@ -61,7 +59,7 @@ diff --git a/testing/xpcshell/runtestsb2g.py b/testing/xpcshell/runtestsb2g.py
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py
 +++ b/testing/xpcshell/runxpcshelltests.py
-@@ -1,31 +1,43 @@
+@@ -1,31 +1,44 @@
  #!/usr/bin/env python
  #
  # This Source Code Form is subject to the terms of the Mozilla Public
@@ -80,8 +78,9 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  from subprocess import Popen, PIPE, STDOUT
  from tempfile import mkdtemp, gettempdir
 -from threading import Timer
-+from threading import Timer, Thread, Semaphore
++from threading import Timer, Thread, Event
  import random
++import signal
  import socket
  import time
  
@@ -107,7 +106,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
  if os.path.isdir(mozbase):
      for package in os.listdir(mozbase):
-@@ -44,16 +56,523 @@ def parse_json(j):
+@@ -44,16 +57,514 @@ def parse_json(j):
      return eval(j, {'true':True,'false':False,'null':None})
  
  """ Control-C handling """
@@ -117,7 +116,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
      gotSIGINT = True
  
 +class XPCShellTestThread(Thread):
-+    def __init__(self, test_object, sem, cleanup_dir_list, tests_root_dir=None,
++    def __init__(self, test_object, event, cleanup_dir_list, tests_root_dir=None,
 +            app_dir_key=None, interactive=False, verbose=False, pStdout=None,
 +            pStderr=None, keep_going=False, log=None, **kwargs):
 +        Thread.__init__(self)
@@ -158,8 +157,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +        self.todoCount = 0
 +        self.failCount = 0
 +
-+        # semaphore from main thread to signal work done
-+        self.sem = sem
++        # event from main thread to signal work done
++        self.event = event
 +
 +    def run(self):
 +        try:
@@ -170,7 +169,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +        else:
 +            self.exception = None
 +            self.traceback = None
-+        self.sem.release()
++        self.event.set()
 +
 +    def kill(self, proc):
 +        """
@@ -198,13 +197,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +          For a given test file and stdout buffer, create a log file.
 +          On a remote system we have to fix the test name since it can contain directories.
 +        """
-+        try:
-+            f = open(test_file + ".log", "w")
++        with open(test_file + ".log", "w") as f:
 +            f.write(stdout)
-+
-+        finally:
-+            if f:
-+                f.close()
 +
 +    def getReturnCode(self, proc):
 +        """
@@ -225,7 +219,6 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +          Simple wrapper to launch a process.
 +          On a remote system, this is more complex and we need to overload this function.
 +        """
-+        cmd = wrapCommand(cmd)
 +        if HAVE_PSUTIL:
 +            popen_func = psutil.Popen
 +        else:
@@ -391,45 +384,42 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +                self.log.info(line)
 +        self.log.info("<<<<<<<")
 +
-+    def cleanupDir(self, directory, name, stdout, xunit_result, try_count=0):
-+        TRY_LIMIT = 25 # up to TRY_LIMIT seconds timeout, because the Windows
-+                       # filesystem is slow to react to the changes
-+        try:
-+            self.removeDir(directory)
-+            return True
-+        except Exception:
-+            self.log.info("TEST-INFO | Failed to remove directory: %s. Waiting." % directory)
-+
-+            # We suspect the filesystem may still be making changes. Wait a
-+            # little bit and try again.
-+            time.sleep(1)
-+
++    def cleanupDir(self, directory, name, stdout, xunit_result):
++        TRY_LIMIT = 25 # up to TRY_LIMIT attempts (one every second), because
++                       # the Windows filesystem is slow to react to the changes
++        try_count = 0
++        while try_count < TRY_LIMIT:
 +            try:
 +                self.removeDir(directory)
-+                return True
-+            except Exception:
-+                # we try this a few times - needed on Windows, at least
-+                if try_count < TRY_LIMIT:
-+                    return self.cleanupDir(directory, name, stdout, xunit_result, try_count + 1)
++            except OSError:
++                self.log.info("TEST-INFO | Failed to remove directory: %s. Waiting." % directory)
++                # We suspect the filesystem may still be making changes. Wait a
++                # little bit and try again.
++                time.sleep(1)
++                try_count += 1
++            else:
++                # removed fine
++                return
 +
-+                # we try again later at the end of the run for plugin dirs (because windows!)
-+                if directory == self.pluginsDir:
-+                    self.cleanup_dir_list.append(directory)
-+                    return False
++        # we try again later at the end of the run for plugin dirs (because windows!)
++        if directory == self.pluginsDir:
++            self.cleanup_dir_list.append(directory)
++            return
 +
-+                message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
-+                self.log.error(message)
-+                self.print_stdout(stdout)
-+                self.print_stdout(traceback.format_exc())
++        # we couldn't clean up the directory, and it's not the plugins dir,
++        # which means that something wrong has probably happened
++        message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
++        self.log.error(message)
++        self.print_stdout(stdout)
++        self.print_stdout(traceback.format_exc())
 +
-+                self.failCount += 1
-+                xunit_result["passed"] = False
-+                xunit_result["failure"] = {
-+                    "type": "TEST-UNEXPECTED-FAIL",
-+                    "message": message,
-+                    "text": "%s\n%s" % (stdout, traceback.format_exc())
-+                }
-+                return False
++        self.failCount += 1
++        xunit_result["passed"] = False
++        xunit_result["failure"] = {
++            "type": "TEST-UNEXPECTED-FAIL",
++            "message": message,
++            "text": "%s\n%s" % (stdout, traceback.format_exc())
++        }
 +
 +    def run_test(self):
 +        """Run an individual xpcshell test."""
@@ -615,7 +605,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +            }
 +
 +            self.log.error("TEST-UNEXPECTED-FAIL | Received SIGINT (control-C) during test execution")
-+            if keep_going:
++            if self.keep_going:
 +                gotSIGINT = False
 +            else:
 +                self.keep_going = False
@@ -631,7 +621,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
      def __init__(self, log=None):
          """ Init logging and node status """
          if log:
-@@ -167,27 +686,16 @@ class XPCShellTests(object):
+@@ -167,27 +678,16 @@ class XPCShellTests(object):
          else: # unix or linux?
              if not "LD_LIBRARY_PATH" in self.env or self.env["LD_LIBRARY_PATH"] is None:
                  self.env["LD_LIBRARY_PATH"] = self.xrePath
@@ -659,7 +649,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          if self.interactive:
              pStdout = None
              pStderr = None
-@@ -198,61 +706,16 @@ class XPCShellTests(object):
+@@ -198,61 +698,16 @@ class XPCShellTests(object):
              else:
                  if sys.platform == 'os2emx':
                      pStdout = None
@@ -721,7 +711,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
            |singleFile| will be the optional test only, or |None|.
          """
          self.singleFile = None
-@@ -268,189 +731,23 @@ class XPCShellTests(object):
+@@ -268,189 +723,23 @@ class XPCShellTests(object):
                      self.testPath = self.testPath.rsplit('/', 1)
                      self.singleFile = self.testPath[1]
                      self.testPath = self.testPath[0]
@@ -911,7 +901,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          nodeBin = None
  
          # We try to find the node executable in the path given to us by the user in
-@@ -593,20 +890,16 @@ class XPCShellTests(object):
+@@ -593,20 +882,16 @@ class XPCShellTests(object):
              testsuite.appendChild(testcase)
  
          testsuite.setAttribute("tests", str(total))
@@ -932,7 +922,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              testgroup='b2g xpcshell testsuite',
              operating_system='android',
              arch='emulator',
-@@ -639,31 +932,39 @@ class XPCShellTests(object):
+@@ -639,31 +924,39 @@ class XPCShellTests(object):
              t.finish(result=outcome, time_end=duration, output=output)
  
              collection.append(t)
@@ -981,7 +971,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |xpcshell|, is the xpcshell executable to use to run the tests.
          |xrePath|, if provided, is the path to the XRE to use.
          |appPath|, if provided, is the path to an application directory.
-@@ -752,35 +1053,34 @@ class XPCShellTests(object):
+@@ -752,35 +1045,34 @@ class XPCShellTests(object):
          self.logfiles = logfiles
          self.totalChunks = totalChunks
          self.thisChunk = thisChunk
@@ -1010,7 +1000,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          self.buildXpcsRunArgs()
          self.buildEnvironment()
  
-+        self.sem = Semaphore(0)
++        self.event = Event()
 +
          # Handle filenames in mozInfo
          if not isinstance(self.mozInfo, dict):
@@ -1020,7 +1010,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  return False
              self.mozInfo = parse_json(open(mozInfoFile).read())
          mozinfo.update(self.mozInfo)
-@@ -799,302 +1099,162 @@ class XPCShellTests(object):
+@@ -799,302 +1091,168 @@ class XPCShellTests(object):
  
          pStdout, pStderr = self.getPipes()
  
@@ -1054,6 +1044,11 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +            'xpcsRunArgs': self.xpcsRunArgs,
 +        }
 +
++        if self.sequential:
++            # Allow user to kill hung xpcshell subprocess with SIGINT
++            # when we are only running tests sequentially.
++            signal.signal(signal.SIGINT, markGotSIGINT)
++
 +        # create a queue of all tests that will run
 +        tests_queue = deque()
 +        # also a list for the tests that need to be run sequentially
@@ -1072,7 +1067,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 -                tests_root_dir=testsRootDir, app_dir_key=appDirKey,
 -                interactive=interactive, verbose=verbose, pStdout=pStdout,
 -                pStderr=pStderr, keep_going=keepGoing)
-+            test = XPCShellTestThread(test_object, self.sem, self.cleanup_dir_list,
++            test = XPCShellTestThread(test_object, self.event, self.cleanup_dir_list,
 +                    tests_root_dir=testsRootDir, app_dir_key=appDirKey,
 +                    interactive=interactive, verbose=verbose, pStdout=pStdout,
 +                    pStderr=pStderr, keep_going=keepGoing, log=self.log,
@@ -1108,16 +1103,13 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +            # process the finished tests so far
 +
 +            # wait for at least one of the tests to finish
-+            # (every test releases the semaphore (+1) when it's done)
-+            self.sem.acquire()
-+            # add 1 back to the semaphore, will be subtracted in the loop
-+            self.sem.release()
++            self.event.wait()
++            self.event.clear()
 +
 +            # find what tests are done (might be more than 1)
 +            done_tests = set()
 +            for test in running_tests:
 +                if not test.is_alive():
-+                    self.sem.acquire()
 +                    done_tests.add(test)
 +                    test.join()
 +                    # did the test encounter any exception?
@@ -1136,6 +1128,10 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +        if keep_going:
 +            # run the other tests sequentially
 +            for test in sequential_tests:
++                if not keep_going:
++                    self.log.error("TEST-UNEXPECTED-FAIL | Received SIGINT (control-C), so stopped run. " \
++                                   "(Use --keep-going to keep running tests after killing one with SIGINT)")
++                    break
 +                test.start()
 +                test.join()
 +                # did the test encounter any exception?
@@ -1433,7 +1429,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          addCommonOptions(self)
          self.add_option("--app-path",
                          type="string", dest="appPath", default=None,
-@@ -1115,16 +1275,19 @@ class XPCShellOptions(OptionParser):
+@@ -1115,16 +1273,19 @@ class XPCShellOptions(OptionParser):
                          action="store_true", dest="logfiles", default=True,
                          help="create log files (default, only used to override --no-logfiles)")
          self.add_option("--manifest",
@@ -1453,6 +1449,24 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                          help="absolute path to directory where all tests are located. this is typically $(objdir)/_tests")
          self.add_option("--testing-modules-dir",
                          dest="testingModulesDir", default=None,
+@@ -1168,13 +1329,17 @@ def main():
+         sys.exit(1)
+ 
+     xpcsh = XPCShellTests()
+ 
+     if options.interactive and not options.testPath:
+         print >>sys.stderr, "Error: You must specify a test filename in interactive mode!"
+         sys.exit(1)
+ 
++    # running sequentially for safety reasons for now (in automation)
++    # mach will run tests in parallel by default
++    options.sequential = True
++
+     if not xpcsh.runTests(args[0], testdirs=args[1:], **options.__dict__):
+         sys.exit(1)
+ 
+ if __name__ == '__main__':
+     main()
 diff --git a/testing/xpcshell/selftest.py b/testing/xpcshell/selftest.py
 --- a/testing/xpcshell/selftest.py
 +++ b/testing/xpcshell/selftest.py

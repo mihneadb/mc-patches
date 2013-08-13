@@ -2,14 +2,14 @@
 # User Chris Manchester <cmanchester@mozilla.com>
 # Date 1375810109 25200
 #      Tue Aug 06 10:28:29 2013 -0700
-# Node ID 50f40c51fb4529385bf7cd8251eba40b1ba59603
-# Parent d1c07d6d65913e79fdd9ece667d62aaa16128f8f
-Bug 887054 - Synchronize blocks of output when running xpcshell tests in parallel; f?mihneadb
+# Node ID 0b92345ff58758b3924426f16da2825a42678670
+# Parent 44016a6e78e593e84f9f5a089b7f0d94ff2e13d9
+Bug 887054 - Synchronize blocks of output when running xpcshell tests in parallel; r=ted
 
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py
 +++ b/testing/xpcshell/runxpcshelltests.py
-@@ -9,30 +9,36 @@ import re, sys, os, os.path, logging, sh
+@@ -9,31 +9,37 @@ import re, sys, os, os.path, logging, sh
  import xml.dom.minidom
  from collections import deque
  from distutils import dir_util
@@ -18,9 +18,10 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  from optparse import OptionParser
  from subprocess import Popen, PIPE, STDOUT
  from tempfile import mkdtemp, gettempdir
--from threading import Timer, Thread, Semaphore
-+from threading import Timer, Thread, Semaphore, RLock
+-from threading import Timer, Thread, Event
++from threading import Timer, Thread, Event, RLock
  import random
+ import signal
  import socket
  import time
  
@@ -47,45 +48,47 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  # --------------------------------------------------------------
  # TODO: this is a hack for mozbase without virtualenv, remove with bug 849900
  #
-@@ -351,20 +357,22 @@ class XPCShellTestThread(Thread):
-             try:
-                 self.removeDir(directory)
-                 return True
-             except Exception:
-                 # we try this a few times - needed on Windows, at least
-                 if try_count < TRY_LIMIT:
-                     return self.cleanupDir(directory, name, stdout, xunit_result, try_count + 1)
+@@ -350,20 +356,21 @@ class XPCShellTestThread(Thread):
  
-+                LOG_MUTEX.acquire()
-                 message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
-                 self.log.error(message)
-                 self.print_stdout(stdout)
-                 self.print_stdout(traceback.format_exc())
-+                LOG_MUTEX.release()
+         # we try again later at the end of the run for plugin dirs (because windows!)
+         if directory == self.pluginsDir:
+             self.cleanup_dir_list.append(directory)
+             return
  
-                 self.failCount += 1
-                 xunit_result["passed"] = False
-                 xunit_result["failure"] = {
-                     "type": "TEST-UNEXPECTED-FAIL",
-                     "message": message,
-                     "text": "%s\n%s" % (stdout, traceback.format_exc())
-                 }
-@@ -470,36 +478,41 @@ class XPCShellTestThread(Thread):
-                                                 re.MULTILINE)) or
-                           # if e10s test started but never finished (child process crash)
-                           (stdout and re.search("^child: CHILD-TEST-STARTED",
+         # we couldn't clean up the directory, and it's not the plugins dir,
+         # which means that something wrong has probably happened
+-        message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
+-        self.log.error(message)
+-        self.print_stdout(stdout)
+-        self.print_stdout(traceback.format_exc())
++        with LOG_MUTEX:
++            message = "TEST-UNEXPECTED-FAIL | %s | Failed to clean up directory: %s" % (name, sys.exc_info()[1])
++            self.log.error(message)
++            self.print_stdout(stdout)
++            self.print_stdout(traceback.format_exc())
+ 
+         self.failCount += 1
+         xunit_result["passed"] = False
+         xunit_result["failure"] = {
+             "type": "TEST-UNEXPECTED-FAIL",
+             "message": message,
+             "text": "%s\n%s" % (stdout, traceback.format_exc())
+         }
+@@ -471,33 +478,38 @@ class XPCShellTestThread(Thread):
                                                  stdout, re.MULTILINE)
                                    and not re.search("^child: CHILD-TEST-COMPLETED",
                                                      stdout, re.MULTILINE)))
  
              if result != expected:
-+                LOG_MUTEX.acquire()
                  failureType = "TEST-UNEXPECTED-%s" % ("FAIL" if expected else "PASS")
                  message = "%s | %s | test failed (with xpcshell return code: %d), see following log:" % (
                                failureType, name, self.getReturnCode(proc))
-                 self.log.error(message)
-                 self.print_stdout(stdout)
-+                LOG_MUTEX.release()
+-                self.log.error(message)
+-                self.print_stdout(stdout)
++
++                with LOG_MUTEX:
++                    self.log.error(message)
++                    self.print_stdout(stdout)
 +
                  self.failCount += 1
                  self.xunit_result["passed"] = False
@@ -99,11 +102,14 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  now = time.time()
                  timeTaken = (now - startTime) * 1000
                  self.xunit_result["time"] = now - startTime
-                 self.log.info("TEST-%s | %s | test passed (time: %.3fms)" % ("PASS" if expected else "KNOWN-FAIL", name, timeTaken))
-                 if self.verbose:
-+                    LOG_MUTEX.acquire()
-                     self.print_stdout(stdout)
-+                    LOG_MUTEX.release()
+-                self.log.info("TEST-%s | %s | test passed (time: %.3fms)" % ("PASS" if expected else "KNOWN-FAIL", name, timeTaken))
+-                if self.verbose:
+-                    self.print_stdout(stdout)
++
++                with LOG_MUTEX:
++                    self.log.info("TEST-%s | %s | test passed (time: %.3fms)" % ("PASS" if expected else "KNOWN-FAIL", name, timeTaken))
++                    if self.verbose:
++                        self.print_stdout(stdout)
  
                  self.xunit_result["passed"] = True
  
@@ -112,7 +118,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  else:
                      self.todoCount = 1
                      self.xunit_result["todo"] = True
-@@ -516,19 +529,22 @@ class XPCShellTestThread(Thread):
+@@ -514,19 +526,21 @@ class XPCShellTestThread(Thread):
  
              if self.logfiles and stdout:
                  self.createLogFile(name, stdout)
@@ -121,11 +127,13 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              # We can sometimes get here before the process has terminated, which would
              # cause removeDir() to fail - so check for the process & kill it it needed.
              if proc and self.poll(proc) is None:
-+                LOG_MUTEX.acquire()
-                 message = "TEST-UNEXPECTED-FAIL | %s | Process still running after test!" % name
-                 self.log.error(message)
-                 self.print_stdout(stdout)
-+                LOG_MUTEX.release()
+-                message = "TEST-UNEXPECTED-FAIL | %s | Process still running after test!" % name
+-                self.log.error(message)
+-                self.print_stdout(stdout)
++                with LOG_MUTEX:
++                    message = "TEST-UNEXPECTED-FAIL | %s | Process still running after test!" % name
++                    self.log.error(message)
++                    self.print_stdout(stdout)
 +
                  self.failCount = 1
                  self.xunit_result["passed"] = False
@@ -135,7 +143,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                    "text": stdout
                  }
                  self.kill(proc)
-@@ -566,16 +582,29 @@ class XPCShellTests(object):
+@@ -564,16 +578,30 @@ class XPCShellTests(object):
  
      log = getGlobalLog()
      oldcwd = os.getcwd()
@@ -147,15 +155,16 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +
 +        # Each method of the underlying logger must acquire the log
 +        # mutex before writing to stdout.
-+        log_funs = ['debug', 'info', 'warning', 'error', 'critical']
++        log_funs = ['debug', 'info', 'warning', 'error', 'critical', 'log']
 +        for fun_name in log_funs:
-+            if hasattr(self.log, fun_name):
-+                unwrapped = getattr(self.log, fun_name)
-+                def wrapped(*args, **kwargs):
-+                    LOG_MUTEX.acquire()
-+                    unwrapped(*args, **kwargs)
-+                    LOG_MUTEX.release()
-+                setattr(self.log, fun_name, wrapped)
++            unwrapped = getattr(self.log, fun_name, None)
++            if unwrapped:
++                def wrap(fn):
++                    def wrapped(*args, **kwargs):
++                        with LOG_MUTEX:
++                            fn(*args, **kwargs)
++                    return wrapped
++                setattr(self.log, fun_name, wrap(unwrapped))
 +
          self.nodeProc = None
  

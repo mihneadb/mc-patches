@@ -1,11 +1,11 @@
 parxpc
+mach_seq
 mobile-parxpc
 parxpc_atomicLogging.patch
+try-xpc-all
+reftestprof
 intermittents
 imgtools
-try-xpc-all
-mach_seq
-reftestprof
 try-reftest-all
 try-xpc-desktop-all
 try-xpc-mobile

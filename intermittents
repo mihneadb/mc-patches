@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent bbbf083bf6f20fbe3933caeac2bd98a9c07b31d8
+# Parent 124ff6962c4b92b04f2180c953e73f0e6a2a3356
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 898658 - Run the xpcshell tests that fail when run in parallel concurrently.
 
@@ -766,7 +766,7 @@ diff --git a/toolkit/devtools/server/tests/unit/xpcshell.ini b/toolkit/devtools/
  [test_blackboxing-02.js]
  [test_blackboxing-03.js]
  [test_blackboxing-04.js]
-@@ -141,19 +142,21 @@ reason = bug 820380
+@@ -142,19 +143,21 @@ reason = bug 820380
  [test_longstringactor.js]
  [test_longstringgrips-01.js]
  [test_longstringgrips-02.js]
@@ -822,7 +822,7 @@ diff --git a/toolkit/modules/tests/xpcshell/xpcshell.ini b/toolkit/modules/tests
 diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini
 --- a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini
 +++ b/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini
-@@ -9,27 +9,31 @@ skip-if = os == "android"
+@@ -9,28 +9,32 @@ skip-if = os == "android"
  [test_AddonRepository_cache.js]
  # Bug 676992: test consistently hangs on Android
  skip-if = os == "android"
@@ -834,6 +834,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
 +run-sequentially = Known intermittent, bug 899686. Bug 898658
  [test_LightweightThemeManager.js]
  [test_backgroundupdate.js]
+ [test_bad_json.js]
  [test_badschema.js]
  [test_blocklistchange.js]
  # Bug 676992: test consistently hangs on Android
@@ -854,7 +855,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  # Bug 676992: test consistently hangs on Android
  skip-if = os == "android"
  run-sequentially = Hardcoded port in install.rdf.
-@@ -39,16 +43,17 @@ skip-if = os == "android"
+@@ -40,16 +44,17 @@ skip-if = os == "android"
  run-sequentially = Uses hardcoded ports in xpi files.
  [test_bug335238.js]
  # Bug 676992: test consistently hangs on Android
@@ -872,7 +873,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  skip-if = os == "android"
  [test_bug394300.js]
  # Bug 676992: test consistently hangs on Android
-@@ -70,16 +75,17 @@ skip-if = os == "android"
+@@ -71,16 +76,17 @@ skip-if = os == "android"
  # Bug 676992: test consistently hangs on Android
  skip-if = os == "android"
  [test_bug449027.js]
@@ -890,7 +891,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  skip-if = os == "android"
  [test_bug470377_1.js]
  # Bug 676992: test consistently hangs on Android
-@@ -100,35 +106,39 @@ skip-if = os == "android"
+@@ -101,35 +107,39 @@ skip-if = os == "android"
  # Bug 676992: test consistently hangs on Android
  skip-if = os == "android"
  [test_bug514327_1.js]
@@ -931,13 +932,13 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  [test_bug596607.js]
  [test_bug616841.js]
 @@ -145,29 +155,33 @@ fail-if = os == "android"
+ [test_bug757663.js]
  [test_cacheflush.js]
  [test_checkcompatibility.js]
  [test_ChromeManifestParser.js]
  [test_compatoverrides.js]
  [test_corrupt.js]
  [test_corrupt_strictcompat.js]
- [test_db_sanity.js]
  [test_dictionary.js]
 +run-sequentially = Known intermittent, bug 824022. Bug 898658
  [test_langpack.js]
@@ -945,9 +946,9 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  [test_disable.js]
  [test_distribution.js]
  [test_dss.js]
++run-sequentially = Intermittently times out, bug 854330. Bug 898658
  # Bug 676992: test consistently fails on Android
  fail-if = os == "android"
-+run-sequentially = Intermittently times out, bug 854330. Bug 898658
  [test_duplicateplugins.js]
  # Bug 676992: test consistently hangs on Android
  skip-if = os == "android"
@@ -982,12 +983,12 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  skip-if = os == "android"
  run-sequentially = Uses hardcoded ports in xpi files.
  [test_locale.js]
-@@ -203,40 +218,47 @@ skip-if = os == "android"
- [test_migrate2.js]
+@@ -204,41 +219,48 @@ skip-if = os == "android"
  [test_migrate3.js]
  [test_migrate4.js]
  [test_migrate5.js]
  [test_migrateAddonRepository.js]
+ [test_migrate_max_version.js]
  [test_onPropertyChanged_appDisabled.js]
  [test_permissions.js]
  [test_plugins.js]
@@ -995,9 +996,9 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  [test_pluginchange.js]
 +run-sequentially = Possible intermittent when run in parallel. Bug 898658
  [test_pluginBlocklistCtp.js]
-+run-sequentially = Possible intermittent when run in parallel. Bug 898658
  # Bug 676992: test consistently fails on Android
  fail-if = os == "android"
++run-sequentially = Possible intermittent when run in parallel. Bug 898658
  [test_pref_properties.js]
  [test_registry.js]
  [test_safemode.js]
@@ -1021,8 +1022,8 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
 +run-sequentially = Intermittently times out, bug 854330. Bug 898658
  [test_update_strictcompat.js]
  # Bug 676992: test consistently hangs on Android
-+run-sequentially = Intermittently times out, bug 854330. Bug 898658
  skip-if = os == "android"
++run-sequentially = Intermittently times out, bug 854330. Bug 898658
  [test_update_ignorecompat.js]
  # Bug 676992: test consistently hangs on Android
  skip-if = os == "android"
@@ -1030,6 +1031,7 @@ diff --git a/toolkit/mozapps/extensions/test/xpcshell/xpcshell.ini b/toolkit/moz
  # Bug 676992: test consistently hangs on Android
  skip-if = os == "android"
  run-sequentially = Uses hardcoded ports in xpi files.
+ [test_updateid.js]
 diff --git a/toolkit/mozapps/update/test/unit/xpcshell_updater.ini b/toolkit/mozapps/update/test/unit/xpcshell_updater.ini
 --- a/toolkit/mozapps/update/test/unit/xpcshell_updater.ini
 +++ b/toolkit/mozapps/update/test/unit/xpcshell_updater.ini
