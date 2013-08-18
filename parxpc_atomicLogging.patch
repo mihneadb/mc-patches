@@ -3,8 +3,8 @@
 # Date 1375810109 25200
 #      Tue Aug 06 10:28:29 2013 -0700
 # Node ID 0b92345ff58758b3924426f16da2825a42678670
-# Parent 44016a6e78e593e84f9f5a089b7f0d94ff2e13d9
-Bug 887054 - Synchronize blocks of output when running xpcshell tests in parallel; r=ted
+# Parent c72cfef453d52c0548ecaa1e223a6806b24d0898
+Bug 887054 - Part 3 - Synchronize blocks of output when running xpcshell tests in parallel; r=ted
 
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py

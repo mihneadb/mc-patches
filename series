@@ -1,10 +1,10 @@
 parxpc
 mach_seq
-mobile-parxpc
 parxpc_atomicLogging.patch
+tcpserversocket
 try-xpc-all
-reftestprof
 intermittents
+reftestprof
 imgtools
 try-reftest-all
 try-xpc-desktop-all

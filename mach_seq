@@ -1,6 +1,6 @@
 # HG changeset patch
-# Parent a587326a1f8f272cebd0dd20ee7b72e5e79dead1
-Bug 887054 - Add support for --sequential to mach, r=gps
+# Parent cafaffcc2eeac5deedcfc5260eec52616ef3b625
+Bug 887054 - Part 2 - Add parallel warning and support for --sequential to mach xpcshell-test, r=gps
 
 diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.py
 --- a/testing/xpcshell/mach_commands.py
@@ -92,8 +92,8 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
          self.log_manager.disable_unstructured()
  
 +        if not result and not sequential:
-+            print("Tests were run in parallel. Try running with --sequential \
-+                   to make sure the failures were not caused by this.")
++            print("Tests were run in parallel. Try running with --sequential "
++                  "to make sure the failures were not caused by this.")
          return int(not result)
  
  

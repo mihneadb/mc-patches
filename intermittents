@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent 124ff6962c4b92b04f2180c953e73f0e6a2a3356
+# Parent 061db8c01e8ec5b4fdc699d7eaca170d8788da20
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 898658 - Run the xpcshell tests that fail when run in parallel concurrently.
 
@@ -162,6 +162,19 @@ diff --git a/image/test/unit/xpcshell.ini b/image/test/unit/xpcshell.ini
 \ No newline at end of file
 +run-sequentially = Possible intermittent timeout when run in parallel. Bug 898658
 +[test_private_channel.js]
+diff --git a/js/xpconnect/tests/unit/xpcshell.ini b/js/xpconnect/tests/unit/xpcshell.ini
+--- a/js/xpconnect/tests/unit/xpcshell.ini
++++ b/js/xpconnect/tests/unit/xpcshell.ini
+@@ -43,8 +43,9 @@ fail-if = os == "android"
+ [test_params.js]
+ [test_tearoffs.js]
+ [test_want_components.js]
+ [test_components.js]
+ [test_allowedDomains.js]
+ [test_allowedDomainsXHR.js]
+ [test_nuke_sandbox.js]
+ [test_watchdog.js]
++run-sequentially = Possible intermittent when run in parallel. Bug 898658
 diff --git a/modules/libmar/tests/unit/xpcshell.ini b/modules/libmar/tests/unit/xpcshell.ini
 --- a/modules/libmar/tests/unit/xpcshell.ini
 +++ b/modules/libmar/tests/unit/xpcshell.ini
@@ -766,7 +779,7 @@ diff --git a/toolkit/devtools/server/tests/unit/xpcshell.ini b/toolkit/devtools/
  [test_blackboxing-02.js]
  [test_blackboxing-03.js]
  [test_blackboxing-04.js]
-@@ -142,19 +143,21 @@ reason = bug 820380
+@@ -143,19 +144,21 @@ reason = bug 820380
  [test_longstringactor.js]
  [test_longstringgrips-01.js]
  [test_longstringgrips-02.js]

@@ -1,0 +1,28 @@
+# HG changeset patch
+# Parent f4bc6ca6d90cfd5bb28db281491b93063e9ff0cb
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 887054 - Part 4 - Mark dom/network/tests/unit/test_tcpserversocket.js to run sequentially;r=ahal
+
+diff --git a/dom/network/tests/unit/xpcshell.ini b/dom/network/tests/unit/xpcshell.ini
+--- a/dom/network/tests/unit/xpcshell.ini
++++ b/dom/network/tests/unit/xpcshell.ini
+@@ -1,7 +1,8 @@
+ [DEFAULT]
+ head =
+ tail =
+ 
+ [test_tcpsocket.js]
+ [test_multisend.js]
+ [test_tcpserversocket.js]
++run-sequentially = Uses hardcoded port, bug 903830.
+diff --git a/dom/network/tests/unit_ipc/xpcshell.ini b/dom/network/tests/unit_ipc/xpcshell.ini
+--- a/dom/network/tests/unit_ipc/xpcshell.ini
++++ b/dom/network/tests/unit_ipc/xpcshell.ini
+@@ -1,6 +1,7 @@
+ [DEFAULT]
+ head =
+ tail =
+ 
+ [test_tcpsocket_ipc.js]
+ [test_tcpserversocket_ipc.js]
++run-sequentially = Uses hardcoded port, bug 903830.
