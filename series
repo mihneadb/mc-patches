@@ -7,14 +7,8 @@ try-reftest-all
 stress
 raise
 stress-manifests
-mach_output
 xpc-singlefile
-parxpc
-mach_seq
-parxpc_atomicLogging.patch
 intermittents
-reftestprof
-imgtools
 try-xpc-desktop-all
 try-xpc-mobile
 jsref
