@@ -1,0 +1,29 @@
+# HG changeset patch
+# Parent aada0f74faf9af9a5bc0f54d270020c2d7668969
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 905835 - Fix whitespace in mach parxpc warning
+
+diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.py
+--- a/testing/xpcshell/mach_commands.py
++++ b/testing/xpcshell/mach_commands.py
+@@ -147,18 +147,18 @@ class XPCShellRunner(MozbuildObject):
+ 
+             filtered_args[k] = v
+ 
+         result = xpcshell.runTests(**filtered_args)
+ 
+         self.log_manager.disable_unstructured()
+ 
+         if not result and not sequential:
+-            print("Tests were run in parallel. Try running with --sequential \
+-                   to make sure the failures were not caused by this.")
++            print("Tests were run in parallel. Try running with --sequential "
++                  "to make sure the failures were not caused by this.")
+         return int(not result)
+ 
+ 
+ @CommandProvider
+ class MachCommands(MachCommandBase):
+     @Command('xpcshell-test', category='testing',
+         description='Run XPCOM Shell tests.')
+     @CommandArgument('test_file', default='all', nargs='?', metavar='TEST',

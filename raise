@@ -1,0 +1,34 @@
+# HG changeset patch
+# Parent aada0f74faf9af9a5bc0f54d270020c2d7668969
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 906172 - Handle exceptions for sequential tests properly,r=ted
+
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -1236,21 +1236,23 @@ class XPCShellTests(object):
+             # run the other tests sequentially
+             for test in sequential_tests:
+                 if not keep_going:
+                     self.log.error("TEST-UNEXPECTED-FAIL | Received SIGINT (control-C), so stopped run. " \
+                                    "(Use --keep-going to keep running tests after killing one with SIGINT)")
+                     break
+                 test.start()
+                 test.join()
++                self.addTestResults(test)
+                 # did the test encounter any exception?
+                 if test.exception:
+-                    raise test.exception
++                    exceptions.append(test.exception)
++                    tracebacks.append(test.traceback)
++                    break
+                 keep_going = test.keep_going
+-                self.addTestResults(test)
+ 
+         # restore default SIGINT behaviour
+         signal.signal(signal.SIGINT, signal.SIG_DFL)
+ 
+         self.shutdownNode()
+         # Clean up any slacker directories that might be lying around (Windows).
+         # Some might fail because of windows taking too long to unlock them.
+         # We don't do anything if this fails because the test slaves will have

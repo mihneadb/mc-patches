@@ -1,0 +1,46 @@
+# HG changeset patch
+# Parent aada0f74faf9af9a5bc0f54d270020c2d7668969
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 905782 - Make the XPCShell harness treat running a single file as a sequential run;r=ted
+
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -1115,16 +1115,18 @@ class XPCShellTests(object):
+ 
+         # We have to do this before we build the test list so we know whether or
+         # not to run tests that depend on having the node spdy server
+         self.trySetupNode()
+ 
+         pStdout, pStderr = self.getPipes()
+ 
+         self.buildTestList()
++        if self.singleFile:
++            self.sequential = True
+ 
+         if shuffle:
+             random.shuffle(self.alltests)
+ 
+         self.xunitResults = []
+         self.cleanup_dir_list = []
+ 
+         kwargs = {
+@@ -1178,17 +1180,17 @@ class XPCShellTests(object):
+                     interactive=interactive, verbose=verbose, pStdout=pStdout,
+                     pStderr=pStderr, keep_going=keepGoing, log=self.log,
+                     mobileArgs=mobileArgs, **kwargs)
+             if 'run-sequentially' in test_object or self.sequential:
+                 sequential_tests.append(test)
+             else:
+                 tests_queue.append(test)
+ 
+-        if sequential:
++        if self.sequential:
+             self.log.info("INFO | Running tests sequentially.")
+         else:
+             self.log.info("INFO | Using at most %d threads." % NUM_THREADS)
+ 
+         # keep a set of NUM_THREADS running tests and start running the
+         # tests in the queue at most NUM_THREADS at a time
+         running_tests = set()
+         keep_going = True

@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent d2ce76654a6ac161b27ce7659b426b6a348abc82
+# Parent aada0f74faf9af9a5bc0f54d270020c2d7668969
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 899171 - Use mozprofile in the reftest harness
 
@@ -143,7 +143,7 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
      self.automation = automation
  
    def getFullPath(self, path):
-@@ -37,65 +39,76 @@ class RefTest(object):
+@@ -37,65 +39,79 @@ class RefTest(object):
          defaultManifestPath = os.path.join(path, 'crashtests.list')
          if os.path.exists(defaultManifestPath):
            path = defaultManifestPath
@@ -153,7 +153,8 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
      return '"%s"' % re.sub(r'([\\"])', r'\\\1', s)
  
 -  def createReftestProfile(self, options, profileDir, manifest, server='localhost'):
-+  def createReftestProfile(self, options, manifest, server='localhost'):
++  def createReftestProfile(self, options, manifest, server='localhost',
++                           special_powers=True):
      """
        Sets up a profile for reftest.
        'manifest' is the path to the reftest.list file we want to test with.  This is used in
@@ -193,10 +194,10 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
 +    if options.logFile:
 +      prefs['reftest.logFile'] = options.logFile
 +    if options.ignoreWindowSize:
-+      prefs['reftest.ignoreWindowSize'] = 'true'
++      prefs['reftest.ignoreWindowSize'] = True
 +    if options.filter:
-+      prefs['reftest.filter'] = self.makeJSString(options.filter)
-+    prefs['reftest.focusFilterMode'] = self.makeJSString(options.focusFilterMode)
++      prefs['reftest.filter'] = options.filter
++    prefs['reftest.focusFilterMode'] = options.focusFilterMode
  
      for v in options.extraPrefs:
 -      thispref = v.split("=")
@@ -218,10 +219,11 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
  
      # I would prefer to use "--install-extension reftest/specialpowers", but that requires tight coordination with
      # release engineering and landing on multiple branches at once.
-     if manifest.endswith('crashtests.list'):
+-    if manifest.endswith('crashtests.list'):
 -      self.automation.installExtension(os.path.join(SCRIPT_DIRECTORY, "specialpowers"),
 -                                                    profileDir,
 -                                                    "special-powers@mozilla.org")
++    if special_powers and manifest.endswith('crashtests.list'):
 +      addons.append(os.path.join(SCRIPT_DIRECTORY, 'specialpowers'))
 +
 +    # Install distributed extensions, if application has any.
@@ -234,11 +236,13 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
 +    for f in options.extensionsToInstall:
 +      addons.append(self.getFullPath(f))
 +
-+    return mozprofile.profile.Profile(
++    profile = mozprofile.profile.Profile(
 +        addons=addons,
 +        preferences=prefs,
 +        locations=locations,
 +    )
++    self.copyExtraFilesToProfile(options, profile.profile)
++    return profile
  
    def buildBrowserEnv(self, options, profileDir):
      browserEnv = self.automation.environment(xrePath = options.xrePath)
@@ -247,7 +251,7 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
      for v in options.environment:
        ix = v.find("=")
        if ix <= 0:
-@@ -116,20 +129,19 @@ class RefTest(object):
+@@ -116,20 +132,18 @@ class RefTest(object):
      debuggerInfo = getDebuggerInfo(self.oldcwd, options.debugger, options.debuggerArgs,
          options.debuggerInteractive);
  
@@ -257,11 +261,11 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
        if cmdlineArgs == None:
          cmdlineArgs = ['-reftest', reftestlist]
 -      profileDir = mkdtemp()
-+      profile = self.createReftestProfile(options, reftestlist)
-+      profileDir = profile.profile # name makes more sense
-       self.copyExtraFilesToProfile(options, profileDir)
+-      self.copyExtraFilesToProfile(options, profileDir)
 -      self.createReftestProfile(options, profileDir, reftestlist)
 -      self.installExtensionsToProfile(options, profileDir)
++      profile = self.createReftestProfile(options, reftestlist)
++      profileDir = profile.profile # name makes more sense
  
        # browser environment
        browserEnv = self.buildBrowserEnv(options, profileDir)
@@ -270,7 +274,7 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
        status = self.automation.runApp(None, browserEnv, options.app, profileDir,
                                   cmdlineArgs,
                                   utilityPath = options.utilityPath,
-@@ -153,28 +165,16 @@ class RefTest(object):
+@@ -153,28 +167,16 @@ class RefTest(object):
          shutil.copy2(abspath, profileDir)
        elif os.path.isdir(abspath):
          dest = os.path.join(profileDir, os.path.basename(abspath))
@@ -320,7 +324,7 @@ diff --git a/layout/tools/reftest/runreftestb2g.py b/layout/tools/reftest/runref
          self.remoteProfilesIniPath = os.path.join(self.remoteMozillaPath, 'profiles.ini')
          self.originalProfilesIni = None
          self.scriptDir = scriptDir
-@@ -387,51 +386,47 @@ class B2GReftest(RefTest):
+@@ -387,51 +386,49 @@ class B2GReftest(RefTest):
  
          self._devicemanager.pushFile(newProfilesIni, self.remoteProfilesIniPath)
          try:
@@ -333,7 +337,9 @@ diff --git a/layout/tools/reftest/runreftestb2g.py b/layout/tools/reftest/runref
 -        print "profileDir: " + str(profileDir)
 -        retVal = RefTest.createReftestProfile(self, options, profileDir, reftestlist, server=options.remoteWebServer)
 +    def createReftestProfile(self, options, reftestlist):
-+        profile = RefTest.createReftestProfile(self, options, reftestlist, server=options.remoteWebServer)
++        profile = RefTest.createReftestProfile(self, options, reftestlist,
++                                               server=options.remoteWebServer,
++                                               special_powers=False)
 +        profileDir = profile.profile
  
 +        prefs = {}
@@ -398,7 +404,7 @@ diff --git a/layout/tools/reftest/runreftestb2g.py b/layout/tools/reftest/runref
          except DMError:
              print "Automation Error: Unable to copy profile to device."
              raise
-@@ -453,17 +448,17 @@ user_pref("capability.principal.codebase
+@@ -453,17 +450,17 @@ user_pref("capability.principal.codebase
          # directory.  Backup the original user.js first so we can restore it.
          self._devicemanager._checkCmdAs(['shell', 'rm', '-f', '%s.orig' % self.userJS])
          self._devicemanager._checkCmdAs(['shell', 'dd', 'if=%s' % self.userJS, 'of=%s.orig' % self.userJS])
