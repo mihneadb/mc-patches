@@ -1,6 +1,7 @@
 # HG changeset patch
-# Parent 74fe1012de43151990e5a9f5a636f61a79d3b1f3
+# Parent bb025b6949e88dc58b47bd614b49d1e5f20141d3
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 906510 - Rerun tests that fail when run in parallel.
 
 diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
 --- a/testing/xpcshell/runxpcshelltests.py
@@ -37,7 +38,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          self.pluginsPath = kwargs.get('pluginsPath')
          self.httpdManifest = kwargs.get('httpdManifest')
          self.httpdJSPath = kwargs.get('httpdJSPath')
-@@ -119,16 +123,21 @@ class XPCShellTestThread(Thread):
+@@ -119,16 +123,22 @@ class XPCShellTestThread(Thread):
          except Exception as e:
              self.exception = e
              self.traceback = traceback.format_exc()
@@ -49,7 +50,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +    def mark_for_retry(self):
 +        self.try_again_list.append(self.test_object)
 +        self.retry = True
-+        self.log.info("Trouble with %s, will retry." % self.test_object['name'])
++        self.log.info("TEST-INFO | %s | Test failed or timed out, will retry."
++                      % self.test_object['name'])
 +
      def kill(self, proc):
          """
@@ -59,7 +61,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          return proc.kill()
  
      def removeDir(self, dirname):
-@@ -185,17 +194,20 @@ class XPCShellTestThread(Thread):
+@@ -185,17 +195,20 @@ class XPCShellTestThread(Thread):
          self.log.info("TEST-INFO | %s | current directory: %r" % (name, testdir))
          # Show only those environment variables that are changed from
          # the ambient environment.
@@ -81,7 +83,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
            On a remote system, this may be overloaded to use a remote path structure.
          """
          return ['-e', 'const _TEST_FILE = ["%s"];' %
-@@ -333,16 +345,19 @@ class XPCShellTestThread(Thread):
+@@ -333,16 +346,19 @@ class XPCShellTestThread(Thread):
          """Print stdout line-by-line to avoid overflowing buffers."""
          self.log.info(">>>>>>>")
          if stdout:
@@ -101,7 +103,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  self.removeDir(directory)
              except OSError:
                  self.log.info("TEST-INFO | Failed to remove directory: %s. Waiting." % directory)
-@@ -356,30 +371,45 @@ class XPCShellTestThread(Thread):
+@@ -356,30 +372,45 @@ class XPCShellTestThread(Thread):
  
          # we try again later at the end of the run for plugin dirs (because windows!)
          if directory == self.pluginsDir:
@@ -147,7 +149,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
          self.xunit_result = {'name': self.test_object['name'], 'classname': 'xpcshell'}
  
-@@ -475,16 +505,20 @@ class XPCShellTestThread(Thread):
+@@ -475,16 +506,20 @@ class XPCShellTestThread(Thread):
                                                  re.MULTILINE)) or
                            # if e10s test started but never finished (child process crash)
                            (stdout and re.search("^child: CHILD-TEST-STARTED",
@@ -168,7 +170,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                      self.log.error(message)
                      self.print_stdout(stdout)
  
-@@ -510,56 +544,58 @@ class XPCShellTestThread(Thread):
+@@ -510,56 +545,58 @@ class XPCShellTestThread(Thread):
  
                  if expected:
                      self.passCount = 1
@@ -238,7 +240,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  "type": "SIGINT",
                  "message": "Received SIGINT",
                  "text": "Received SIGINT (control-C) during test execution."
-@@ -1121,16 +1157,17 @@ class XPCShellTests(object):
+@@ -1121,16 +1158,17 @@ class XPCShellTests(object):
  
          self.buildTestList()
  
@@ -256,8 +258,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              'debuggerInfo': self.debuggerInfo,
              'pluginsPath': self.pluginsPath,
              'httpdManifest': self.httpdManifest,
-@@ -1168,17 +1205,17 @@ class XPCShellTests(object):
-             if self.singleFile and not name.endswith(self.singleFile):
+@@ -1169,20 +1207,21 @@ class XPCShellTests(object):
                  continue
  
              if self.testPath and name.find(self.testPath) == -1:
@@ -265,17 +266,25 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
              self.testCount += 1
  
--            test = testClass(test_object, self.event, self.cleanup_dir_list,
-+            test = testClass(test_object, self.event, self.cleanup_dir_list, self.try_again_list,
-                     tests_root_dir=testsRootDir, app_dir_key=appDirKey,
-                     interactive=interactive, verbose=verbose, pStdout=pStdout,
-                     pStderr=pStderr, keep_going=keepGoing, log=self.log,
-                     mobileArgs=mobileArgs, **kwargs)
+             test = testClass(test_object, self.event, self.cleanup_dir_list,
+-                    tests_root_dir=testsRootDir, app_dir_key=appDirKey,
+-                    interactive=interactive, verbose=verbose, pStdout=pStdout,
+-                    pStderr=pStderr, keep_going=keepGoing, log=self.log,
+-                    mobileArgs=mobileArgs, **kwargs)
++                    self.try_again_list, tests_root_dir=testsRootDir,
++                    app_dir_key=appDirKey, interactive=interactive,
++                    verbose=verbose, pStdout=pStdout, pStderr=pStderr,
++                    keep_going=keepGoing, log=self.log, mobileArgs=mobileArgs,
++                    **kwargs)
              if 'run-sequentially' in test_object or self.sequential:
                  sequential_tests.append(test)
              else:
                  tests_queue.append(test)
-@@ -1214,16 +1251,18 @@ class XPCShellTests(object):
+ 
+         if sequential:
+             self.log.info("INFO | Running tests sequentially.")
+         else:
+@@ -1214,16 +1253,20 @@ class XPCShellTests(object):
              self.event.clear()
  
              # find what tests are done (might be more than 1)
@@ -284,6 +293,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  if not test.is_alive():
                      done_tests.add(test)
                      test.join()
++                    # if the test had trouble, we will try running it again
++                    # at the end of the run
 +                    if test.retry:
 +                        continue
                      # did the test encounter any exception?
@@ -294,7 +305,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                          # the currently running ones to finish
                          keep_going = False
                      keep_going = keep_going and test.keep_going
-@@ -1234,24 +1273,44 @@ class XPCShellTests(object):
+@@ -1234,24 +1277,45 @@ class XPCShellTests(object):
  
          if keep_going:
              # run the other tests sequentially
@@ -303,25 +314,26 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                      self.log.error("TEST-UNEXPECTED-FAIL | Received SIGINT (control-C), so stopped run. " \
                                     "(Use --keep-going to keep running tests after killing one with SIGINT)")
                      break
++                # we don't want to retry these tests
 +                test.first_try = False
                  test.start()
                  test.join()
-+                if test.retry:
-+                    continue
                  # did the test encounter any exception?
                  if test.exception:
                      raise test.exception
                  keep_going = test.keep_going
                  self.addTestResults(test)
  
-+        # retry failed tests sequentially
++        # retry tests that failed when run in parallel
++        if self.try_again_list:
++            self.log.info("Retrying tests that failed when run in parallel.")
 +        for test_object in self.try_again_list:
-+            test = testClass(test_object, self.event, self.cleanup_dir_list, self.try_again_list,
-+                    tests_root_dir=testsRootDir, app_dir_key=appDirKey,
-+                    interactive=interactive, verbose=verbose, pStdout=pStdout,
-+                    pStderr=pStderr, keep_going=keepGoing, log=self.log,
-+                    mobileArgs=mobileArgs, first_try=False, **kwargs)
-+            self.log.info("Retrying")
++            test = testClass(test_object, self.event, self.cleanup_dir_list,
++                    self.try_again_list, tests_root_dir=testsRootDir,
++                    app_dir_key=appDirKey, interactive=interactive,
++                    verbose=verbose, pStdout=pStdout, pStderr=pStderr,
++                    keep_going=keepGoing, log=self.log, mobileArgs=mobileArgs,
++                    first_try=False, **kwargs)
 +            test.start()
 +            test.join()
 +            # did the test encounter any exception?
@@ -339,3 +351,21 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          # Some might fail because of windows taking too long to unlock them.
          # We don't do anything if this fails because the test slaves will have
          # their $TEMP dirs cleaned up on reboot anyway.
+@@ -1270,16 +1334,17 @@ class XPCShellTests(object):
+         if self.testCount == 0:
+             self.log.error("TEST-UNEXPECTED-FAIL | runxpcshelltests.py | No tests run. Did you pass an invalid --test-path?")
+             self.failCount = 1
+ 
+         self.log.info("INFO | Result summary:")
+         self.log.info("INFO | Passed: %d" % self.passCount)
+         self.log.info("INFO | Failed: %d" % self.failCount)
+         self.log.info("INFO | Todo: %d" % self.todoCount)
++        self.log.info("INFO | Retried: %d" % len(self.try_again_list))
+ 
+         if autolog:
+             self.post_to_autolog(self.xunitResults, xunitName)
+ 
+         if xunitFilename is not None:
+             self.writeXunitResults(filename=xunitFilename, results=self.xunitResults,
+                                    name=xunitName)
+ 

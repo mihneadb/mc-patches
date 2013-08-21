@@ -1,12 +1,12 @@
 # HG changeset patch
-# Parent aada0f74faf9af9a5bc0f54d270020c2d7668969
+# Parent c8c9bd74cc405ed706ff153fb2170418bcbc7ebc
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 899171 - Use mozprofile in the reftest harness
 
 diff --git a/layout/tools/reftest/remotereftest.py b/layout/tools/reftest/remotereftest.py
 --- a/layout/tools/reftest/remotereftest.py
 +++ b/layout/tools/reftest/remotereftest.py
-@@ -327,72 +327,69 @@ class RemoteReftest(RefTest):
+@@ -327,74 +327,72 @@ class RemoteReftest(RefTest):
  
          options.xrePath = remoteXrePath
          options.utilityPath = remoteUtilityPath
@@ -41,7 +41,7 @@ diff --git a/layout/tools/reftest/remotereftest.py b/layout/tools/reftest/remote
 +        # Set a future policy version to avoid the telemetry prompt.
 +        prefs["toolkit.telemetry.prompted"] = 999
 +        prefs["toolkit.telemetry.notifiedOptOut"] = 999
-+        prefs["reftest.uri"] = reftestlist
++        prefs["reftest.uri"] = "%s" % reftestlist
 +        prefs["datareporting.policy.dataSubmissionPolicyBypassAcceptance"] = True
  
 -// Point the url-classifier to the local testing server for fast failures
@@ -111,16 +111,21 @@ diff --git a/layout/tools/reftest/remotereftest.py b/layout/tools/reftest/remote
              print "Automation Error: Failed to copy profiledir to device"
              raise
  
+-    def copyExtraFilesToProfile(self, options, profileDir):
+-        RefTest.copyExtraFilesToProfile(self, options, profileDir)
 +        return profile
 +
-     def copyExtraFilesToProfile(self, options, profileDir):
-         RefTest.copyExtraFilesToProfile(self, options, profileDir)
++    def copyExtraFilesToProfile(self, options, profile):
++        profileDir = profile.profile
++        RefTest.copyExtraFilesToProfile(self, options, profile)
          try:
              self._devicemanager.pushDir(profileDir, options.remoteProfile)
          except devicemanager.DMError:
              print "Automation Error: Failed to copy extra files to device"
              raise
  
+     def getManifestPath(self, path):
+         return path
 diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftest.py
 --- a/layout/tools/reftest/runreftest.py
 +++ b/layout/tools/reftest/runreftest.py
@@ -241,7 +246,7 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
 +        preferences=prefs,
 +        locations=locations,
 +    )
-+    self.copyExtraFilesToProfile(options, profile.profile)
++    self.copyExtraFilesToProfile(options, profile)
 +    return profile
  
    def buildBrowserEnv(self, options, profileDir):
@@ -274,8 +279,28 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
        status = self.automation.runApp(None, browserEnv, options.app, profileDir,
                                   cmdlineArgs,
                                   utilityPath = options.utilityPath,
-@@ -153,28 +167,16 @@ class RefTest(object):
-         shutil.copy2(abspath, profileDir)
+@@ -140,41 +154,34 @@ class RefTest(object):
+                                  # with its own timeouts
+                                  timeout=options.timeout + 30.0)
+       processLeakLog(self.leakLogFile, options.leakThreshold)
+       self.automation.log.info("\nREFTEST INFO | runreftest.py | Running tests: end.")
+     finally:
+       self.cleanup(profileDir)
+     return status
+ 
+-  def copyExtraFilesToProfile(self, options, profileDir):
++  def copyExtraFilesToProfile(self, options, profile):
+     "Copy extra files or dirs specified on the command line to the testing profile."
++    profileDir = profile.profile
+     for f in options.extraProfileFiles:
+       abspath = self.getFullPath(f)
+       if os.path.isfile(abspath):
+-        shutil.copy2(abspath, profileDir)
++        if os.path.basename(abspath) == 'user.js':
++          extra_prefs = mozprofile.Preferences.read_prefs(abspath)
++          profile.set_preferences(extra_prefs)
++        else:
++          shutil.copy2(abspath, profileDir)
        elif os.path.isdir(abspath):
          dest = os.path.join(profileDir, os.path.basename(abspath))
          shutil.copytree(abspath, dest)
@@ -306,25 +331,7 @@ diff --git a/layout/tools/reftest/runreftest.py b/layout/tools/reftest/runreftes
 diff --git a/layout/tools/reftest/runreftestb2g.py b/layout/tools/reftest/runreftestb2g.py
 --- a/layout/tools/reftest/runreftestb2g.py
 +++ b/layout/tools/reftest/runreftestb2g.py
-@@ -213,17 +213,16 @@ class B2GReftest(RefTest):
- 
-     def __init__(self, automation, devicemanager, options, scriptDir):
-         self._automation = automation
-         RefTest.__init__(self, self._automation)
-         self._devicemanager = devicemanager
-         self.runSSLTunnel = False
-         self.remoteTestRoot = options.remoteTestRoot
-         self.remoteProfile = options.remoteProfile
--        self._automation.setRemoteProfile(self.remoteProfile)
-         self.localLogName = options.localLogName
-         self.remoteLogFile = options.remoteLogFile
-         self.bundlesDir = '/system/b2g/distribution/bundles'
-         self.userJS = '/data/local/user.js'
-         self.remoteMozillaPath = '/data/b2g/mozilla'
-         self.remoteProfilesIniPath = os.path.join(self.remoteMozillaPath, 'profiles.ini')
-         self.originalProfilesIni = None
-         self.scriptDir = scriptDir
-@@ -387,51 +386,49 @@ class B2GReftest(RefTest):
+@@ -387,51 +387,49 @@ class B2GReftest(RefTest):
  
          self._devicemanager.pushFile(newProfilesIni, self.remoteProfilesIniPath)
          try:
@@ -404,7 +411,7 @@ diff --git a/layout/tools/reftest/runreftestb2g.py b/layout/tools/reftest/runref
          except DMError:
              print "Automation Error: Unable to copy profile to device."
              raise
-@@ -453,17 +450,17 @@ user_pref("capability.principal.codebase
+@@ -453,20 +451,21 @@ user_pref("capability.principal.codebase
          # directory.  Backup the original user.js first so we can restore it.
          self._devicemanager._checkCmdAs(['shell', 'rm', '-f', '%s.orig' % self.userJS])
          self._devicemanager._checkCmdAs(['shell', 'dd', 'if=%s' % self.userJS, 'of=%s.orig' % self.userJS])
@@ -416,10 +423,16 @@ diff --git a/layout/tools/reftest/runreftestb2g.py b/layout/tools/reftest/runref
 -        return retVal
 +        return profile
  
-     def copyExtraFilesToProfile(self, options, profileDir):
-         RefTest.copyExtraFilesToProfile(self, options, profileDir)
+-    def copyExtraFilesToProfile(self, options, profileDir):
+-        RefTest.copyExtraFilesToProfile(self, options, profileDir)
++    def copyExtraFilesToProfile(self, options, profile):
++        profileDir = profile.profile
++        RefTest.copyExtraFilesToProfile(self, options, profile)
          try:
              self._devicemanager.pushDir(profileDir, options.remoteProfile)
          except DMError:
              print "Automation Error: Failed to copy extra files to device"
              raise
+ 
+     def getManifestPath(self, path):
+         return path
