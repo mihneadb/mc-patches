@@ -1,0 +1,113 @@
+# HG changeset patch
+# Parent 7a5d06c76e65f1c174818af2268cd2afe369cba5
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+
+diff --git a/layout/tools/reftest/remotereftest.py b/layout/tools/reftest/remotereftest.py
+--- a/layout/tools/reftest/remotereftest.py
++++ b/layout/tools/reftest/remotereftest.py
+@@ -378,16 +378,17 @@ class RemoteReftest(RefTest):
+         profile.set_preferences(prefs)
+ 
+         try:
+             self._devicemanager.pushDir(profileDir, options.remoteProfile)
+         except devicemanager.DMError:
+             print "Automation Error: Failed to copy profiledir to device"
+             raise
+ 
++        import pdb; pdb.set_trace()
+         return profile
+ 
+     def copyExtraFilesToProfile(self, options, profileDir):
+         RefTest.copyExtraFilesToProfile(self, options, profileDir)
+         try:
+             self._devicemanager.pushDir(profileDir, options.remoteProfile)
+         except devicemanager.DMError:
+             print "Automation Error: Failed to copy extra files to device"
+@@ -424,54 +425,56 @@ class RemoteReftest(RefTest):
+             except:
+                 print "Warning: cleaning up pidfile '%s' was unsuccessful from the test harness" % self.pidFile
+ 
+ def main(args):
+     automation = RemoteAutomation(None)
+     parser = RemoteOptions(automation)
+     options, args = parser.parse_args()
+ 
+-    if (options.deviceIP == None):
+-        print "Error: you must provide a device IP to connect to via the --device option"
+-        return 1
++    #if (options.deviceIP == None):
++        #print "Error: you must provide a device IP to connect to via the --device option"
++        #return 1
+ 
+-    try:
+-        if (options.dm_trans == "adb"):
+-            if (options.deviceIP):
+-                dm = droid.DroidADB(options.deviceIP, options.devicePort, deviceRoot=options.remoteTestRoot)
+-            else:
+-                dm = droid.DroidADB(None, None, deviceRoot=options.remoteTestRoot)
+-        else:
+-            dm = droid.DroidSUT(options.deviceIP, options.devicePort, deviceRoot=options.remoteTestRoot)
+-    except devicemanager.DMError:
+-        print "Error: exception while initializing devicemanager.  Most likely the device is not in a testable state."
+-        return 1
++    #try:
++        #if (options.dm_trans == "adb"):
++            #if (options.deviceIP):
++                #dm = droid.DroidADB(options.deviceIP, options.devicePort, deviceRoot=options.remoteTestRoot)
++            #else:
++                #dm = droid.DroidADB(None, None, deviceRoot=options.remoteTestRoot)
++        #else:
++            #dm = droid.DroidSUT(options.deviceIP, options.devicePort, deviceRoot=options.remoteTestRoot)
++    #except devicemanager.DMError:
++        #print "Error: exception while initializing devicemanager.  Most likely the device is not in a testable state."
++        #return 1
+ 
+-    automation.setDeviceManager(dm)
++    #automation.setDeviceManager(dm)
+ 
+-    if (options.remoteProductName != None):
+-        automation.setProduct(options.remoteProductName)
++    #if (options.remoteProductName != None):
++        #automation.setProduct(options.remoteProductName)
+ 
+     # Set up the defaults and ensure options are set
+-    options = parser.verifyRemoteOptions(options)
+-    if (options == None):
+-        print "ERROR: Invalid options specified, use --help for a list of valid options"
+-        return 1
++    #options = parser.verifyRemoteOptions(options)
++    #if (options == None):
++        #print "ERROR: Invalid options specified, use --help for a list of valid options"
++        #return 1
++    options.remoteLogFile = '/mnt/sdcard/tests/reftest/reftest.log'
+ 
+-    if not options.ignoreWindowSize:
+-        parts = dm.getInfo('screen')['screen'][0].split()
+-        width = int(parts[0].split(':')[1])
+-        height = int(parts[1].split(':')[1])
+-        if (width < 1050 or height < 1050):
+-            print "ERROR: Invalid screen resolution %sx%s, please adjust to 1366x1050 or higher" % (width, height)
+-            return 1
++    #if not options.ignoreWindowSize:
++        #parts = dm.getInfo('screen')['screen'][0].split()
++        #width = int(parts[0].split(':')[1])
++        #height = int(parts[1].split(':')[1])
++        #if (width < 1050 or height < 1050):
++            #print "ERROR: Invalid screen resolution %sx%s, please adjust to 1366x1050 or higher" % (width, height)
++            #return 1
+ 
+-    automation.setAppName(options.app)
+-    automation.setRemoteProfile(options.remoteProfile)
+-    automation.setRemoteLog(options.remoteLogFile)
++    #automation.setAppName(options.app)
++    #automation.setRemoteProfile(options.remoteProfile)
++    #automation.setRemoteLog(options.remoteLogFile)
++    dm = None
+     reftest = RemoteReftest(automation, dm, options, SCRIPT_DIRECTORY)
+     options = parser.verifyCommonOptions(options, reftest)
+ 
+     # Hack in a symbolic link for jsreftest
+     os.system("ln -s ../jsreftest " + str(os.path.join(SCRIPT_DIRECTORY, "jsreftest")))
+ 
+     # Dynamically build the reftest URL if possible, beware that args[0] should exist 'inside' the webroot
+     manifest = args[0]

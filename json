@@ -1,0 +1,69 @@
+# HG changeset patch
+# Parent 1d6bf2bd4003d23f9f726d85d2e75f83d26eae2a
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 907521 - Use json.loads in xpcshell harness instead of eval hack
+
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -1,15 +1,16 @@
+ #!/usr/bin/env python
+ #
+ # This Source Code Form is subject to the terms of the Mozilla Public
+ # License, v. 2.0. If a copy of the MPL was not distributed with this
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+ import copy
++import json
+ import re, sys, os, os.path, logging, shutil, math, time, traceback
+ import xml.dom.minidom
+ from collections import deque
+ from distutils import dir_util
+ from glob import glob
+ from multiprocessing import cpu_count
+ from optparse import OptionParser
+ from subprocess import Popen, PIPE, STDOUT
+@@ -49,24 +50,16 @@ mozbase = os.path.realpath(os.path.join(
+ if os.path.isdir(mozbase):
+     for package in os.listdir(mozbase):
+         sys.path.append(os.path.join(mozbase, package))
+ 
+ import manifestparser
+ import mozcrash
+ import mozinfo
+ 
+-# ---------------------------------------------------------------
+-#TODO: replace this with json.loads when Python 2.6 is required.
+-def parse_json(j):
+-    """
+-    Awful hack to parse a restricted subset of JSON strings into Python dicts.
+-    """
+-    return eval(j, {'true':True,'false':False,'null':None})
+-
+ """ Control-C handling """
+ gotSIGINT = False
+ def markGotSIGINT(signum, stackFrame):
+     global gotSIGINT
+     gotSIGINT = True
+ 
+ class XPCShellTestThread(Thread):
+     def __init__(self, test_object, event, cleanup_dir_list, tests_root_dir=None,
+@@ -1097,17 +1090,17 @@ class XPCShellTests(object):
+         self.event = Event()
+ 
+         # Handle filenames in mozInfo
+         if not isinstance(self.mozInfo, dict):
+             mozInfoFile = self.mozInfo
+             if not os.path.isfile(mozInfoFile):
+                 self.log.error("Error: couldn't find mozinfo.json at '%s'. Perhaps you need to use --build-info-json?" % mozInfoFile)
+                 return False
+-            self.mozInfo = parse_json(open(mozInfoFile).read())
++            self.mozInfo = json.loads(open(mozInfoFile).read())
+         mozinfo.update(self.mozInfo)
+ 
+         # The appDirKey is a optional entry in either the default or individual test
+         # sections that defines a relative application directory for test runs. If
+         # defined we pass 'grePath/$appDirKey' for the -a parameter of the xpcshell
+         # test harness.
+         appDirKey = None
+         if "appname" in self.mozInfo:
