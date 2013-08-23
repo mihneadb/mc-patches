@@ -1,0 +1,6 @@
+# HG changeset patch
+# Parent 9a6147ef658130e297afd4b03e8352ee4f53ac95
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+try: -b do -p emulator,linux64 -u marionette,marionette-webapi -t none
+
+
