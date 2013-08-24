@@ -1,0 +1,103 @@
+# HG changeset patch
+# Parent 573ca5ccdb51bd88d468e9d76093fc7c4cd2473f
+
+diff --git a/toolkit/mozapps/update/test/unit/head_update.js.in b/toolkit/mozapps/update/test/unit/head_update.js.in
+--- a/toolkit/mozapps/update/test/unit/head_update.js.in
++++ b/toolkit/mozapps/update/test/unit/head_update.js.in
+@@ -104,17 +104,17 @@ const LOG_SVC_SUCCESSFUL_LAUNCH = "Proce
+ // variables are used instead of contants so tests can override these values
+ var gCallbackBinFile = "callback_app" + BIN_SUFFIX;
+ var gCallbackArgs = ["./", "callback.log", "Test Arg 2", "Test Arg 3"];
+ var gBackgroundUpdate = false;
+ var gSwitchApp = false;
+ var gDisableReplaceFallback = false;
+ 
+ // Time to wait for the test helper process before continuing the test
+-const TEST_HELPER_TIMEOUT = 2000;
++const TEST_HELPER_TIMEOUT = 100;
+ 
+ // Use a copy of the main application executable for the test to avoid main
+ // executable in use errors.
+ const FILE_WIN_TEST_EXE = "_aus_test_app.exe";
+ 
+ var gTestserver;
+ 
+ var gXHR;
+@@ -1052,30 +1052,30 @@ function waitForHelperSleep() {
+   // Give the lock file process time to lock the file before updating otherwise
+   // this test can fail intermittently on Windows debug builds.
+   let output = getApplyDirFile("a/b/output", true);
+   if (readFile(output) != "sleeping\n") {
+     do_timeout(TEST_HELPER_TIMEOUT, waitForHelperSleep);
+     return;
+   }
+   output.remove(false);
+-  do_timeout(TEST_HELPER_TIMEOUT, doUpdate);
++  doUpdate();
+ }
+ 
+ function waitForHelperFinished() {
+   // Give the lock file process time to lock the file before updating otherwise
+   // this test can fail intermittently on Windows debug builds.
+   let output = getApplyDirFile("a/b/output", true);
+   if (readFile(output) != "finished\n") {
+     do_timeout(TEST_HELPER_TIMEOUT, waitForHelperFinished);
+     return;
+   }
+   // Give the lock file process time to unlock the file before deleting the
+   // input and output files.
+-  do_timeout(TEST_HELPER_TIMEOUT, waitForHelperFinishFileUnlock);
++  waitForHelperFinishFileUnlock();
+ }
+ 
+ function waitForHelperFinishFileUnlock() {
+   try {
+     let output = getApplyDirFile("a/b/output", true);
+     if (output.exists()) {
+       output.remove(false);
+     }
+@@ -1085,23 +1085,23 @@ function waitForHelperFinishFileUnlock()
+     }
+   }
+   catch (e) {
+     // Give the lock file process time to unlock the file before deleting the
+     // input and output files.
+     do_timeout(TEST_HELPER_TIMEOUT, waitForHelperFinishFileUnlock);
+     return;
+   }
+-  do_timeout(TEST_HELPER_TIMEOUT, checkUpdate);
++  checkUpdate();
+ }
+ 
+ function setupHelperFinish() {
+   let input = getApplyDirFile("a/b/input", true);
+   writeFile(input, "finish\n");
+-  do_timeout(TEST_HELPER_TIMEOUT, waitForHelperFinished);
++  waitForHelperFinished();
+ }
+ 
+ /**
+  * Helper function for updater binary tests for setting up the files and
+  * directories used by the test.
+  *
+  * @param   aMarFile
+  *          The mar file for the update test.
+@@ -1565,17 +1565,17 @@ function removeCallbackCopy() {
+       logTestInfo("non-fatal error removing file during cleanup (will try " +
+                   "again). File: " + appBinCopy.path + " Exception: " + e);
+       do_timeout(TEST_HELPER_TIMEOUT, removeCallbackCopy);
+       return;
+     }
+   }
+   // Use a timeout to give any files that were in use additional 
+   // time to close.  Same as updater.exe without service tests.
+-  do_timeout(TEST_HELPER_TIMEOUT, do_test_finished);
++  do_test_finished();
+ }
+ 
+ // Waits until files that are in use that break tests are no longer in use and
+ // then calls removeCallbackCopy.
+ function waitForFilesInUse() {
+   let maintSvcInstaller = getAppDir();
+   maintSvcInstaller.append("MAINTENANCE_SERVICE_INSTALLER_BIN_FILE");
+ 
