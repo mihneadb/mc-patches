@@ -1,7 +1,8 @@
+profile
+bug908020
 marionette-inactivity
 try-marionette-some
 stash
-profile
 json
 try-xpc-all
 xpc-singlefile
