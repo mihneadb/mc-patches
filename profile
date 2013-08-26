@@ -6,7 +6,7 @@ Bug 907455 - Enhance the xpcshell harness to provide per test resource usage dat
 diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
 --- a/testing/xpcshell/head.js
 +++ b/testing/xpcshell/head.js
-@@ -873,22 +873,45 @@ function do_test_pending(aName) {
+@@ -873,22 +873,47 @@ function do_test_pending(aName) {
  
    _log("test_pending",
         {_message: "TEST-INFO | (xpcshell/head.js) | test" +
@@ -33,6 +33,8 @@ diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
 +
 +  // this blocks so we wait here
 +  let msg = sis.read(512);
++  dump("!!!\n");
++  dump(msg);
 +
 +  inputStream.close();
 +  outputStream.close();
@@ -238,7 +240,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +
 +            # tell xpcshell to carry on
 +            #import time; time.sleep(1)
-+            conn.send("ACK")
++            conn.sendall("ACK")
 +            conn.close()
 +            sock.close()
 +

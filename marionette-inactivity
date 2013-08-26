@@ -6,38 +6,7 @@ Bug 904232 - Add inactivity timeout for marionette tests,r=jgriffin
 diff --git a/testing/marionette/client/marionette/marionette.py b/testing/marionette/client/marionette/marionette.py
 --- a/testing/marionette/client/marionette/marionette.py
 +++ b/testing/marionette/client/marionette/marionette.py
-@@ -699,16 +699,30 @@ class Marionette(object):
-     @property
-     def session_capabilities(self):
-         '''
-         A JSON dictionary representing the capabilities of the current session.
-         '''
-         response = self._send_message('getSessionCapabilities', 'value')
-         return response
- 
-+    def set_script_inactivity_timeout(self, timeout):
-+        '''
-+        Sets the maximum number of ms that a script can be inactive.
-+
-+        If a script does not call any of the simpletest functions in the
-+        specified amount of time, a ScriptTimeoutException is raised.
-+
-+        :param timeout: The maximum number of milliseconds a script is allowed
-+         to run between calls to the simpletest functions without causing an
-+         ScriptTimeoutException to be raised
-+        '''
-+        response = self._send_message('setScriptInactivityTimeout', 'ok', value=timeout)
-+        return response
-+
-     def set_script_timeout(self, timeout):
-         '''
-         Sets the maximum number of ms that an asynchronous script is allowed to run.
- 
-         If a script does not return in the specified amount of time, a
-         ScriptTimeoutException is raised.
- 
-         :param timeout: The maximum number of milliseconds an asynchronous
-@@ -908,28 +922,32 @@ class Marionette(object):
+@@ -908,33 +908,39 @@ class Marionette(object):
                      unwrapped = HTMLElement(self, value[key])
                  else:
                      unwrapped[key] = self.unwrapValue(value[key])
@@ -62,14 +31,40 @@ diff --git a/testing/marionette/client/marionette/marionette.py b/testing/marion
                                        newSandbox=new_sandbox,
                                        specialPowers=special_powers,
                                        scriptTimeout=script_timeout,
-+                                      inactivity_timeout=inactivity_timeout,
++                                      inactivityTimeout=inactivity_timeout,
                                        filename=filename,
                                        line=None)
          return self.unwrapValue(response)
  
-     def execute_script(self, script, script_args=None, new_sandbox=True, special_powers=False, script_timeout=None):
+-    def execute_script(self, script, script_args=None, new_sandbox=True, special_powers=False, script_timeout=None):
++    def execute_script(self, script, script_args=None, new_sandbox=True,
++                       special_powers=False, script_timeout=None,
++                       inactivity_timeout=None):
          '''
          Executes a synchronous JavaScript script, and returns the result (or None if the script does return a value).
+ 
+         The script is executed in the context set by the most recent
+         set_context() call, or to the CONTEXT_CONTENT context if set_context()
+         has not been called.
+ 
+         :param script: A string containing the JavaScript to execute.
+@@ -998,16 +1004,17 @@ class Marionette(object):
+         frame = stack[-2:-1][0] # grab the second-to-last frame
+         response = self._send_message('executeScript',
+                                       'value',
+                                       value=script,
+                                       args=args,
+                                       newSandbox=new_sandbox,
+                                       specialPowers=special_powers,
+                                       scriptTimeout=script_timeout,
++                                      inactivityTimeout=inactivity_timeout,
+                                       line=int(frame[1]),
+                                       filename=os.path.basename(frame[0]))
+         return self.unwrapValue(response)
+ 
+     def execute_async_script(self, script, script_args=None, new_sandbox=True, special_powers=False, script_timeout=None):
+         '''
+         Executes an asynchronous JavaScript script, and returns the result (or None if the script does return a value).
  
 diff --git a/testing/marionette/client/marionette/marionette_test.py b/testing/marionette/client/marionette/marionette_test.py
 --- a/testing/marionette/client/marionette/marionette_test.py
@@ -92,7 +87,7 @@ diff --git a/testing/marionette/client/marionette/marionette_test.py b/testing/m
          self._marionette_weakref = marionette_weakref
          self.marionette = None
          CommonTestCase.__init__(self, methodName)
-@@ -383,20 +384,26 @@ class MarionetteJSTestCase(CommonTestCas
+@@ -383,20 +384,25 @@ class MarionetteJSTestCase(CommonTestCas
          if context != "chrome":
              self.marionette.navigate('data:text/html,<html>test page</html>')
  
@@ -104,7 +99,6 @@ diff --git a/testing/marionette/client/marionette/marionette_test.py b/testing/m
 +        inactivity_timeout = self.inactivity_timeout_re.search(js)
 +        if inactivity_timeout:
 +            inactivity_timeout = inactivity_timeout.group(3)
-+            self.marionette.set_script_inactivity_timeout(inactivity_timeout)
 +
          try:
              results = self.marionette.execute_js_script(js,
@@ -132,8 +126,8 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
  let asyncTestCommandId;
  let asyncTestTimeoutId;
 +
-+let inactivityTimeoutId;
-+let heartbeatCallback;
++let inactivityTimeoutId = null;
++let heartbeatCallback = function () {};
 +
  let originalOnError;
  //timer for doc changes
@@ -204,7 +198,7 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
      } else {
        return marionette.generate_results();
      }
-@@ -484,16 +494,31 @@ function setTestName(msg) {
+@@ -484,16 +494,30 @@ function setTestName(msg) {
  function executeAsyncScript(msg) {
    executeWithCallback(msg);
  }
@@ -214,18 +208,17 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
   */
  function executeJSScript(msg) {
 +  if (msg.json.inactivityTimeout != null) {
-+    inactivityTimeoutId = curFrame.setTimeout(function() {
-+      sandbox.asyncComplete('timed out due to inactivity', 28, null, asyncTestCommandId);
-+    }, msg.json.inactivityTimeout);
-+
-+    heartbeatCallback = function resetInactivityTimeout() {
-+      curFrame.clearTimeout(inactivityTimeoutId);
-+      inactivityTimeoutId = curFrame.setTimeout(function() {
++    let setTimer = function() {
++        inactivityTimeoutId = curFrame.setTimeout(function() {
 +        sandbox.asyncComplete('timed out due to inactivity', 28, null, asyncTestCommandId);
 +      }, msg.json.inactivityTimeout);
 +    };
-+  } else {
-+    heartbeatCallback = function () {}
++
++    setTimer();
++    heartbeatCallback = function resetInactivityTimeout() {
++      curFrame.clearTimeout(inactivityTimeoutId);
++      setTimer();
++    };
 +  }
 +
    if (msg.json.async) {
@@ -236,7 +229,7 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
    }
  }
  
-@@ -511,17 +536,18 @@ function executeWithCallback(msg, useFin
+@@ -511,17 +535,18 @@ function executeWithCallback(msg, useFin
  
    onunload = function() {
      sendError("unload was called", 17, null, asyncTestCommandId);
@@ -278,8 +271,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
    this.currentFrameElement = null;
    this.testName = null;
    this.mozBrowserClose = null;
-@@ -705,17 +707,17 @@ MarionetteServerConnection.prototype = {
-    *
+@@ -706,16 +708,17 @@ MarionetteServerConnection.prototype = {
     * @param object aRequest
     *        'value' member is the script to run
     *        'args' member holds the arguments to the script
@@ -287,8 +279,8 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
     *        if true, it will be run directly and not as a 
     *        function body
     */
--  execute: function MDA_execute(aRequest, directInject) {
-+  execute: function MDA_execute(aRequest, directInject, inactivityTimeout) {
+   execute: function MDA_execute(aRequest, directInject) {
++    let inactivityTimeout = aRequest.inactivityTimeout;
      let timeout = aRequest.scriptTimeout ? aRequest.scriptTimeout : this.scriptTimeout;
      let command_id = this.command_id = this.getCommandId();
      let script;
@@ -297,7 +289,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
        //if client does not send a value in newSandbox, 
        //then they expect the same behaviour as webdriver
        aRequest.newSandbox = true;
-@@ -730,20 +732,45 @@ MarionetteServerConnection.prototype = {
+@@ -730,30 +733,56 @@ MarionetteServerConnection.prototype = {
                         specialPowers: aRequest.specialPowers,
                         filename: aRequest.filename,
                         line: aRequest.line
@@ -308,21 +300,19 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
  
 +    // handle the inactivity timeout
 +    if (inactivityTimeout != null) {
-+     this.inactivityTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
-+     if (this.inactivityTimer != null) {
-+      this.inactivityTimer.initWithCallback(function() {
-+       inactivityTimeoutHandler("timed out due to inactivity", 28);
-+      }, inactivityTimeout, Ci.nsITimer.TYPE_ONESHOT);
-+     }
 +     let that = this;
-+     this.heartbeatCallback = function resetInactivityTimer() {
-+      that.inactivityTimer.cancel();
++     let setTimer = function() {
 +      that.inactivityTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
 +      if (that.inactivityTimer != null) {
 +       that.inactivityTimer.initWithCallback(function() {
 +        inactivityTimeoutHandler("timed out due to inactivity", 28);
 +       }, inactivityTimeout, Ci.nsITimer.TYPE_ONESHOT);
 +      }
++     }
++     setTimer();
++     this.heartbeatCallback = function resetInactivityTimer() {
++      that.inactivityTimer.cancel();
++      setTimer();
 +     }
 +    }
 +    function inactivityTimeoutHandler(message, status) {
@@ -344,35 +334,20 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
      if (!_chromeSandbox)
        return;
  
-@@ -788,48 +815,69 @@ MarionetteServerConnection.prototype = {
-     }
-     else {
-       this.scriptTimeout = timeout;
-       this.sendOk(this.command_id);
-     }
-   },
+     try {
+       _chromeSandbox.finish = function chromeSandbox_finish() {
++        if (that.inactivityTimer != null) {
++          that.inactivityTimer.cancel();
++        }
+         return marionette.generate_results();
+       };
  
-   /**
-+   * Set the inactivity timeout for script execution
-+   *
-+   * @param object aRequest
-+   *        'value' member is time in milliseconds to set timeout
-+   */
-+  setScriptInactivityTimeout: function MDA_setScriptInactivityTimeout(aRequest) {
-+    this.command_id = this.getCommandId();
-+    let timeout = parseInt(aRequest.value);
-+    if(isNaN(timeout)){
-+      this.sendError("Not a Number", 500, null, this.command_id);
-+    }
-+    else {
-+      this.scriptInactivityTimeout = timeout;
-+      this.sendOk(this.command_id);
-+    }
-+  },
-+
-+  /**
-    * execute pure JS script. Used to execute 'mochitest'-style Marionette tests.
-    *
+       if (directInject) {
+         script = aRequest.value;
+       }
+       else {
+         script = "let func = function() {" +
+@@ -798,16 +827,17 @@ MarionetteServerConnection.prototype = {
     * @param object aRequest
     *        'value' member holds the script to execute
     *        'args' member holds the arguments to the script
@@ -380,7 +355,6 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
     */
    executeJSScript: function MDA_executeJSScript(aRequest) {
      let timeout = aRequest.scriptTimeout ? aRequest.scriptTimeout : this.scriptTimeout;
-+    let inactivityTimeout = aRequest.inactivityTimeout ? aRequest.inactivityTimeout : this.scriptInactivityTimeout;
      let command_id = this.command_id = this.getCommandId();
 +
      //all pure JS scripts will need to call Marionette.finish() to complete the test.
@@ -391,14 +365,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
      }
      if (this.context == "chrome") {
        if (aRequest.async) {
--        this.executeWithCallback(aRequest, aRequest.async);
-+        this.executeWithCallback(aRequest, aRequest.async, inactivityTimeout);
-       }
-       else {
--        this.execute(aRequest, true);
-+        this.execute(aRequest, true, inactivityTimeout);
-       }
-     }
+@@ -820,16 +850,17 @@ MarionetteServerConnection.prototype = {
      else {
        this.sendAsync("executeJSScript",
                       {
@@ -407,7 +374,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
                         newSandbox: aRequest.newSandbox,
                         async: aRequest.async,
                         timeout: timeout,
-+                       inactivityTimeout: inactivityTimeout,
++                       inactivityTimeout: aRequest.inactivityTimeout,
                         specialPowers: aRequest.specialPowers,
                         filename: aRequest.filename,
                         line: aRequest.line,
@@ -416,8 +383,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
     }
    },
  
-@@ -843,17 +891,17 @@ MarionetteServerConnection.prototype = {
-    *
+@@ -844,16 +875,17 @@ MarionetteServerConnection.prototype = {
     * @param object aRequest
     *        'value' member holds the script to execute
     *        'args' member holds the arguments for the script
@@ -425,8 +391,8 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
     *        if true, it will be run directly and not as a 
     *        function body
     */
--  executeWithCallback: function MDA_executeWithCallback(aRequest, directInject) {
-+  executeWithCallback: function MDA_executeWithCallback(aRequest, directInject, inactivityTimeout) {
+   executeWithCallback: function MDA_executeWithCallback(aRequest, directInject) {
++    let inactivityTimeout = aRequest.inactivityTimeout;
      let timeout = aRequest.scriptTimeout ? aRequest.scriptTimeout : this.scriptTimeout;
      let command_id = this.command_id = this.getCommandId();
      let script;
@@ -435,7 +401,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
        //if client does not send a value in newSandbox, 
        //then they expect the same behaviour as webdriver
        aRequest.newSandbox = true;
-@@ -862,31 +910,52 @@ MarionetteServerConnection.prototype = {
+@@ -862,31 +894,52 @@ MarionetteServerConnection.prototype = {
      if (this.context == "content") {
        this.sendAsync("executeAsyncScript",
                       {
@@ -489,7 +455,27 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
          status = 500;
          that._emu_cbs = null;
        }
-@@ -2159,16 +2228,17 @@ MarionetteServerConnection.prototype.req
+@@ -906,16 +959,19 @@ MarionetteServerConnection.prototype = {
+                             marionette.command_id);
+         }
+         else {
+           let error_msg = {message: value, status: status, stacktrace: stacktrace};
+           that.sendToClient({from: that.actorID, error: error_msg},
+                             marionette.command_id);
+         }
+       }
++      if (that.inactivityTimer != null) {
++        that.inactivityTimer.cancel();
++      }
+     }
+ 
+     curWindow.onerror = function (errorMsg, url, lineNumber) {
+       chromeAsyncReturnFunc(errorMsg + " at: " + url + " line: " + lineNumber, 17);
+       return true;
+     };
+ 
+     function chromeAsyncFinish() {
+@@ -2159,16 +2215,17 @@ MarionetteServerConnection.prototype.req
    "newSession": MarionetteServerConnection.prototype.newSession,
    "getSessionCapabilities": MarionetteServerConnection.prototype.getSessionCapabilities,
    "getStatus": MarionetteServerConnection.prototype.getStatus,
@@ -510,7 +496,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
 diff --git a/testing/marionette/marionette-simpletest.js b/testing/marionette/marionette-simpletest.js
 --- a/testing/marionette/marionette-simpletest.js
 +++ b/testing/marionette/marionette-simpletest.js
-@@ -1,72 +1,84 @@
+@@ -1,72 +1,80 @@
  /* This Source Code Form is subject to the terms of the Mozilla Public
   * License, v. 2.0. If a copy of the MPL was not distributed with this file,
   * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -568,9 +554,7 @@ diff --git a/testing/marionette/marionette-simpletest.js b/testing/marionette/ma
    },
  
    log: function Marionette__log(msg, level) {
-+    if (typeof this.heartbeatCallback != "undefined") {
-+      this.heartbeatCallback();
-+    }
++    this.heartbeatCallback();
      dump("MARIONETTE LOG: " + (level ? level : "INFO") + ": " + msg + "\n");
      if (this.logObj != null) {
        this.logObj.log(msg, level);
@@ -585,9 +569,7 @@ diff --git a/testing/marionette/marionette-simpletest.js b/testing/marionette/ma
    },
  
    generate_results: function Marionette__generate_results() {
-+    if (typeof this.heartbeatCallback != "undefined") {
-+      this.heartbeatCallback();
-+    }
++    this.heartbeatCallback();
      let passed = 0;
      let failed = 0;
      let failures = [];
@@ -596,7 +578,7 @@ diff --git a/testing/marionette/marionette-simpletest.js b/testing/marionette/ma
          passed++;
        }
        else {
-@@ -76,20 +88,22 @@ Marionette.prototype = {
+@@ -76,20 +84,22 @@ Marionette.prototype = {
        }
      }
      // Reset state in case this object is reused for more tests.
@@ -619,7 +601,7 @@ diff --git a/testing/marionette/marionette-simpletest.js b/testing/marionette/ma
    },
  
    repr: function Marionette__repr(o) {
-@@ -127,29 +141,31 @@ Marionette.prototype = {
+@@ -127,29 +137,31 @@ Marionette.prototype = {
            if (idx != -1) {
                o = o.substr(0, idx) + "{...}";
            }
