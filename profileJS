@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent ce881259e2d0a10897c9ca1ecf116a1cba1a8e56
+# Parent c0d1baa50a64f37863228348e8ec16c409311de6
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 909577 - API for reading process info
 
@@ -7,7 +7,7 @@ diff --git a/toolkit/modules/ProcessInfo.jsm b/toolkit/modules/ProcessInfo.jsm
 new file mode 100644
 --- /dev/null
 +++ b/toolkit/modules/ProcessInfo.jsm
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,84 @@
 +/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -50,10 +50,7 @@ new file mode 100644
 +}
 +
 +function Linux__getIOCounters() {
-+  // returns an object like
-+  // {"rchar":806609,"wchar":171,"syscr":257,"syscw":3,
-+  //  "read_bytes":4096,"write_bytes":0,"cancelled_write_bytes":0}
-+
++  // returns an object with IO counters, like in procfs
 +  let lines = readFileAsLines("/proc/self/io");
 +  let data = {};
 +  lines.map(function(line) {
@@ -114,8 +111,8 @@ diff --git a/toolkit/modules/moz.build b/toolkit/modules/moz.build
      'RemoteSecurityUI.jsm',
      'RemoteWebNavigation.jsm',
      'RemoteWebProgress.jsm',
-     'Sqlite.jsm',
-     'Task.jsm',
+     'SelectContentHelper.jsm',
+     'SelectParentHelper.jsm',
 diff --git a/toolkit/modules/tests/xpcshell/test_ProcessInfo.js b/toolkit/modules/tests/xpcshell/test_ProcessInfo.js
 new file mode 100644
 --- /dev/null

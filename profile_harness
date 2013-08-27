@@ -1,0 +1,126 @@
+# HG changeset patch
+# Parent 9103c825a1bb733028fc2d986cb25e17714efa22
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 907455 - Enhance the xpcshell harness to provide per test resource usage data
+
+
+diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
+--- a/testing/xpcshell/head.js
++++ b/testing/xpcshell/head.js
+@@ -380,24 +380,24 @@ function _execute_test() {
+   // Execute all of our cleanup functions.
+   var func;
+   while ((func = _cleanupFunctions.pop()))
+     func();
+ 
+   // Restore idle service to avoid leaks.
+   _fakeIdleService.deactivate();
+ 
+-  if (_RESOURCE_USAGE) {
++  if (runningInParent && _RESOURCE_USAGE) {
+     Components.utils.import("resource://gre/modules/ProcessInfo.jsm");
+     let resources = {
+       IO: ProcessInfo.Linux.getIOCounters(),
+       CPU: ProcessInfo.Linux.getCPUTimes(),
+       MEM: ProcessInfo.Linux.getMemoryUsage(),
+     };
+-    _log("resource_usage", resources);
++    _log("resource_usage", {resource_data: resources});
+   }
+ 
+   if (!_passed)
+     return;
+ 
+   var truePassedChecks = _passedChecks - _falsePassedChecks;
+   if (truePassedChecks > 0) {
+     _log("test_pass",
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -20,16 +20,18 @@ import xml.dom.minidom
+ from collections import deque
+ from distutils import dir_util
+ from multiprocessing import cpu_count
+ from optparse import OptionParser
+ from subprocess import Popen, PIPE, STDOUT
+ from tempfile import mkdtemp, gettempdir
+ from threading import Timer, Thread, Event, RLock
+ 
++resource_usage = []
++
+ try:
+     import psutil
+     HAVE_PSUTIL = True
+ except ImportError:
+     HAVE_PSUTIL = False
+ 
+ from automation import Automation, getGlobalLog, resetGlobalLog
+ from automationutils import *
+@@ -440,18 +442,17 @@ class XPCShellTestThread(Thread):
+                 # In case a test outputs something that happens to be valid
+                 # JSON object.
+                 self.append_message_from_line(line_string)
+                 continue
+ 
+             action = line_object['action']
+ 
+             if action == 'resource_usage':
+-                from pprint import pprint
+-                pprint(line_object)
++                self.resource_data = line_object['resource_data']
+             else:
+                 self.append_message_from_line(line_object)
+ 
+             if action in FAILURE_ACTIONS:
+                 self.has_failure_output = True
+ 
+             elif action == 'child_test_start':
+                 seen_proc_start = True
+@@ -592,16 +593,27 @@ class XPCShellTestThread(Thread):
+                         for k, v in self.test_object.items():
+                             f.write('%s = %s\n' % (k, v))
+ 
+             else:
+                 now = time.time()
+                 timeTaken = (now - startTime) * 1000
+                 self.xunit_result["time"] = now - startTime
+ 
++                self.resource_data['duration'] = timeTaken
++                # get test file path relative to $SRC_DIR
++                full_path = self.test_object['path']
++                if 'xpcshell' in full_path:
++                    path = 'xpcshell'.join(full_path.split('xpcshell')[1:])
++                else:
++                    path = full_path
++                test_file = str(path[1:])
++                self.resource_data['test_file'] = test_file
++                resource_usage.append(self.resource_data)
++
+                 with LOG_MUTEX:
+                     self.log.info("TEST-%s | %s | test passed (time: %.3fms)" % ("PASS" if expected else "KNOWN-FAIL", name, timeTaken))
+                     if self.verbose:
+                         self.log_output(self.output_lines)
+ 
+                 self.xunit_result["passed"] = True
+ 
+                 if expected:
+@@ -1386,16 +1398,19 @@ class XPCShellTests(object):
+             self.writeXunitResults(filename=xunitFilename, results=self.xunitResults,
+                                    name=xunitName)
+ 
+         if gotSIGINT and not keepGoing:
+             self.log.error("TEST-UNEXPECTED-FAIL | Received SIGINT (control-C), so stopped run. " \
+                            "(Use --keep-going to keep running tests after killing one with SIGINT)")
+             return False
+ 
++        with open("/home/mihnea/resources.json", "w") as f:
++            json.dump(resource_usage, f, sort_keys=True, indent=2)
++
+         return self.failCount == 0
+ 
+ class XPCShellOptions(OptionParser):
+     def __init__(self):
+         """Process command line arguments and call runTests() to do the real work."""
+         OptionParser.__init__(self)
+ 
+         addCommonOptions(self)
