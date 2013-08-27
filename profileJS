@@ -1,0 +1,144 @@
+# HG changeset patch
+# Parent ce881259e2d0a10897c9ca1ecf116a1cba1a8e56
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 909577 - API for reading process info
+
+diff --git a/toolkit/modules/ProcessInfo.jsm b/toolkit/modules/ProcessInfo.jsm
+new file mode 100644
+--- /dev/null
++++ b/toolkit/modules/ProcessInfo.jsm
+@@ -0,0 +1,87 @@
++/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++this.EXPORTED_SYMBOLS = [ "ProcessInfo" ];
++
++Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
++
++const Cc = Components.classes;
++const Ci = Components.interfaces;
++const Cr = Components.results;
++
++
++function getFileFromPath(path) {
++  let file = Cc["@mozilla.org/file/local;1"]
++             .createInstance(Ci.nsILocalFile);
++  file.initWithPath(path);
++  return file;
++}
++
++function readFileAsLines(path) {
++  let file = getFileFromPath(path);
++  // open an input stream from file
++  let istream = Cc["@mozilla.org/network/file-input-stream;1"].
++    createInstance(Ci.nsIFileInputStream);
++  istream.init(file, 0x01, 0444, 0);
++  istream.QueryInterface(Ci.nsILineInputStream);
++
++  // read lines into array
++  let line = {}, lines = [], hasmore;
++  do {
++    hasmore = istream.readLine(line);
++    lines.push(line.value);
++  } while(hasmore);
++
++  istream.close();
++
++  return lines;
++}
++
++function Linux__getIOCounters() {
++  // returns an object like
++  // {"rchar":806609,"wchar":171,"syscr":257,"syscw":3,
++  //  "read_bytes":4096,"write_bytes":0,"cancelled_write_bytes":0}
++
++  let lines = readFileAsLines("/proc/self/io");
++  let data = {};
++  lines.map(function(line) {
++    let [key, value] = line.split(":");
++    data[key] = value | 0;
++  });
++  return data;
++}
++
++function Linux__getMemoryUsage() {
++  // returns an object with various mem data, most importantly VmRSS
++  let lines = readFileAsLines("/proc/self/status");
++  let data = {};
++  lines.map(function(line) {
++    let [key, value] = line.split(":");
++    if (key.startsWith("Vm")) {
++      data[key] = value.split(/\s+/)[1] | 0;
++    }
++  });
++  return data;
++}
++
++function Linux__getCPUTimes() {
++  // returns utime and stime in ticks
++  let line = readFileAsLines("/proc/self/stat")[0];
++  let startPos = line.indexOf(")") + 2;
++  let values = line.substring(startPos).split(" ");
++  return {
++    utime: values[11] | 0,
++    stime: values[12] | 0
++  };
++}
++
++
++this.ProcessInfo = {
++  Linux: {
++    getIOCounters: Linux__getIOCounters,
++    getMemoryUsage: Linux__getMemoryUsage,
++    getCPUTimes: Linux__getCPUTimes,
++  },
++};
+diff --git a/toolkit/modules/moz.build b/toolkit/modules/moz.build
+--- a/toolkit/modules/moz.build
++++ b/toolkit/modules/moz.build
+@@ -14,16 +14,17 @@ EXTRA_JS_MODULES += [
+     'Geometry.jsm',
+     'Http.jsm',
+     'InlineSpellChecker.jsm',
+     'NewTabUtils.jsm',
+     'PageMenu.jsm',
+     'PopupNotifications.jsm',
+     'Preferences.jsm',
+     'PrivateBrowsingUtils.jsm',
++    'ProcessInfo.jsm',
+     'Promise.jsm',
+     'PropertyListUtils.jsm',
+     'RemoteController.jsm',
+     'RemoteSecurityUI.jsm',
+     'RemoteWebNavigation.jsm',
+     'RemoteWebProgress.jsm',
+     'Sqlite.jsm',
+     'Task.jsm',
+diff --git a/toolkit/modules/tests/xpcshell/test_ProcessInfo.js b/toolkit/modules/tests/xpcshell/test_ProcessInfo.js
+new file mode 100644
+--- /dev/null
++++ b/toolkit/modules/tests/xpcshell/test_ProcessInfo.js
+@@ -0,0 +1,8 @@
++/* Any copyright is dedicated to the Public Domain.
++ * http://creativecommons.org/publicdomain/zero/1.0/ */
++
++Components.utils.import("resource://gre/modules/ProcessInfo.jsm");
++
++function run_test() {
++  dump(JSON.stringify(ProcessInfo.Linux.getIOCounters()));
++}
+diff --git a/toolkit/modules/tests/xpcshell/xpcshell.ini b/toolkit/modules/tests/xpcshell/xpcshell.ini
+--- a/toolkit/modules/tests/xpcshell/xpcshell.ini
++++ b/toolkit/modules/tests/xpcshell/xpcshell.ini
+@@ -9,8 +9,9 @@ tail =
+ [test_Promise.js]
+ [test_propertyListsUtils.js]
+ [test_readCertPrefs.js]
+ [test_Services.js]
+ [test_sqlite.js]
+ [test_task.js]
+ [test_TelemetryTimestamps.js]
+ [test_timer.js]
++[test_ProcessInfo.js]
