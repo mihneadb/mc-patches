@@ -6,7 +6,7 @@ Bug 904232 - Add inactivity timeout for marionette tests,r=jgriffin
 diff --git a/testing/marionette/client/marionette/marionette.py b/testing/marionette/client/marionette/marionette.py
 --- a/testing/marionette/client/marionette/marionette.py
 +++ b/testing/marionette/client/marionette/marionette.py
-@@ -908,33 +908,39 @@ class Marionette(object):
+@@ -908,33 +908,38 @@ class Marionette(object):
                      unwrapped = HTMLElement(self, value[key])
                  else:
                      unwrapped[key] = self.unwrapValue(value[key])
@@ -38,8 +38,7 @@ diff --git a/testing/marionette/client/marionette/marionette.py b/testing/marion
  
 -    def execute_script(self, script, script_args=None, new_sandbox=True, special_powers=False, script_timeout=None):
 +    def execute_script(self, script, script_args=None, new_sandbox=True,
-+                       special_powers=False, script_timeout=None,
-+                       inactivity_timeout=None):
++                       special_powers=False, script_timeout=None):
          '''
          Executes a synchronous JavaScript script, and returns the result (or None if the script does return a value).
  
@@ -48,24 +47,6 @@ diff --git a/testing/marionette/client/marionette/marionette.py b/testing/marion
          has not been called.
  
          :param script: A string containing the JavaScript to execute.
-@@ -998,16 +1004,17 @@ class Marionette(object):
-         frame = stack[-2:-1][0] # grab the second-to-last frame
-         response = self._send_message('executeScript',
-                                       'value',
-                                       value=script,
-                                       args=args,
-                                       newSandbox=new_sandbox,
-                                       specialPowers=special_powers,
-                                       scriptTimeout=script_timeout,
-+                                      inactivityTimeout=inactivity_timeout,
-                                       line=int(frame[1]),
-                                       filename=os.path.basename(frame[0]))
-         return self.unwrapValue(response)
- 
-     def execute_async_script(self, script, script_args=None, new_sandbox=True, special_powers=False, script_timeout=None):
-         '''
-         Executes an asynchronous JavaScript script, and returns the result (or None if the script does return a value).
- 
 diff --git a/testing/marionette/client/marionette/marionette_test.py b/testing/marionette/client/marionette/marionette_test.py
 --- a/testing/marionette/client/marionette/marionette_test.py
 +++ b/testing/marionette/client/marionette/marionette_test.py
@@ -127,7 +108,7 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
  let asyncTestTimeoutId;
 +
 +let inactivityTimeoutId = null;
-+let heartbeatCallback = function () {};
++let heartbeatCallback = function () {}; // Called by the simpletest methods.
 +
  let originalOnError;
  //timer for doc changes
@@ -168,7 +149,7 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
        curFrame.removeEventListener("unload", onunload, false);
        curFrame.clearTimeout(asyncTestTimeoutId);
  
-+      if (typeof inactivityTimeoutId != "undefined") {
++      if (inactivityTimeoutId != null) {
 +        curFrame.clearTimeout(inactivityTimeoutId);
 +      }
 +
@@ -189,7 +170,7 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
        asyncTestRunning = false;
        asyncTestTimeoutId = undefined;
        asyncTestCommandId = undefined;
-+      inactivityTimeoutId = undefined;
++      inactivityTimeoutId = null;
      }
    };
    sandbox.finish = function sandbox_finish() {
@@ -198,21 +179,22 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
      } else {
        return marionette.generate_results();
      }
-@@ -484,16 +494,30 @@ function setTestName(msg) {
- function executeAsyncScript(msg) {
-   executeWithCallback(msg);
+@@ -392,16 +402,31 @@ function createExecuteContentSandbox(aWi
+   return sandbox;
  }
  
  /**
-  * Execute pure JS test. Handles both async and sync cases.
+  * Execute the given script either as a function body (executeScript)
+  * or directly (for 'mochitest' like JS Marionette tests)
   */
- function executeJSScript(msg) {
-+  if (msg.json.inactivityTimeout != null) {
+ function executeScript(msg, directInject) {
++  // Set up inactivity timeout.
++  if (msg.json.inactivityTimeout) {
 +    let setTimer = function() {
 +        inactivityTimeoutId = curFrame.setTimeout(function() {
-+        sandbox.asyncComplete('timed out due to inactivity', 28, null, asyncTestCommandId);
++        sendError('timed out due to inactivity', 28, null, asyncTestCommandId);
 +      }, msg.json.inactivityTimeout);
-+    };
++   };
 +
 +    setTimer();
 +    heartbeatCallback = function resetInactivityTimeout() {
@@ -221,15 +203,40 @@ diff --git a/testing/marionette/marionette-listener.js b/testing/marionette/mari
 +    };
 +  }
 +
-   if (msg.json.async) {
-     executeWithCallback(msg, msg.json.async);
-   }
-   else {
-     executeScript(msg, true);
-   }
- }
+   asyncTestCommandId = msg.json.command_id;
+   let script = msg.json.value;
  
-@@ -511,17 +535,18 @@ function executeWithCallback(msg, useFin
+   if (msg.json.newSandbox || !sandbox) {
+     sandbox = createExecuteContentSandbox(curFrame,
+                                           msg.json.timeout);
+     if (!sandbox) {
+       sendError("Could not create sandbox!", 500, null, asyncTestCommandId);
+@@ -501,27 +526,43 @@ function executeJSScript(msg) {
+  * This function is used by executeAsync and executeJSScript to execute a script
+  * in a sandbox. 
+  * 
+  * For executeJSScript, it will return a message only when the finish() method is called.
+  * For executeAsync, it will return a response when marionetteScriptFinished/arguments[arguments.length-1] 
+  * method is called, or if it times out.
+  */
+ function executeWithCallback(msg, useFinish) {
++  // Set up inactivity timeout.
++  if (msg.json.inactivityTimeout) {
++    let setTimer = function() {
++        inactivityTimeoutId = curFrame.setTimeout(function() {
++        sandbox.asyncComplete('timed out due to inactivity', 28, null, asyncTestCommandId);
++      }, msg.json.inactivityTimeout);
++   };
++
++    setTimer();
++    heartbeatCallback = function resetInactivityTimeout() {
++      curFrame.clearTimeout(inactivityTimeoutId);
++      setTimer();
++    };
++  }
++
+   let script = msg.json.value;
+   asyncTestCommandId = msg.json.command_id;
  
    onunload = function() {
      sendError("unload was called", 17, null, asyncTestCommandId);
@@ -262,7 +269,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
    this.pageTimeout = null;
    this.timer = null;
 +  this.inactivityTimer = null;
-+  this.heartbeatCallback = function () {}; // we change it later if necessary
++  this.heartbeatCallback = function () {}; // called by simpletest methods
    this.marionetteLog = new MarionetteLogObj();
    this.command_id = null;
    this.mainFrame = null; //topmost chrome frame
@@ -299,8 +306,13 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
      }
  
 +    // handle the inactivity timeout
-+    if (inactivityTimeout != null) {
-+     let that = this;
++    let that = this;
++    if (inactivityTimeout) {
++     let inactivityTimeoutHandler = function(message, status) {
++      let error_msg = {message: value, status: status};
++      that.sendToClient({from: that.actorID, error: error_msg},
++                        marionette.command_id);
++     };
 +     let setTimer = function() {
 +      that.inactivityTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
 +      if (that.inactivityTimer != null) {
@@ -314,11 +326,6 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
 +      that.inactivityTimer.cancel();
 +      setTimer();
 +     }
-+    }
-+    function inactivityTimeoutHandler(message, status) {
-+     let error_msg = {message: value, status: status};
-+     that.sendToClient({from: that.actorID, error: error_msg},
-+                       marionette.command_id);
 +    }
 +
      let curWindow = this.getCurrentWindow();
@@ -420,7 +427,7 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
      }
  
 +    // handle the inactivity timeout
-+    if (inactivityTimeout != null) {
++    if (inactivityTimeout) {
 +     this.inactivityTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
 +     if (this.inactivityTimer != null) {
 +      this.inactivityTimer.initWithCallback(function() {
@@ -475,24 +482,6 @@ diff --git a/testing/marionette/marionette-server.js b/testing/marionette/marion
      };
  
      function chromeAsyncFinish() {
-@@ -2159,16 +2215,17 @@ MarionetteServerConnection.prototype.req
-   "newSession": MarionetteServerConnection.prototype.newSession,
-   "getSessionCapabilities": MarionetteServerConnection.prototype.getSessionCapabilities,
-   "getStatus": MarionetteServerConnection.prototype.getStatus,
-   "log": MarionetteServerConnection.prototype.log,
-   "getLogs": MarionetteServerConnection.prototype.getLogs,
-   "setContext": MarionetteServerConnection.prototype.setContext,
-   "executeScript": MarionetteServerConnection.prototype.execute,
-   "setScriptTimeout": MarionetteServerConnection.prototype.setScriptTimeout,
-+  "setScriptInactivityTimeout": MarionetteServerConnection.prototype.setScriptInactivityTimeout,
-   "timeouts": MarionetteServerConnection.prototype.timeouts,
-   "singleTap": MarionetteServerConnection.prototype.singleTap,
-   "actionChain": MarionetteServerConnection.prototype.actionChain,
-   "multiAction": MarionetteServerConnection.prototype.multiAction,
-   "executeAsyncScript": MarionetteServerConnection.prototype.executeWithCallback,
-   "executeJSScript": MarionetteServerConnection.prototype.executeJSScript,
-   "setSearchTimeout": MarionetteServerConnection.prototype.setSearchTimeout,
-   "findElement": MarionetteServerConnection.prototype.findElement,
 diff --git a/testing/marionette/marionette-simpletest.js b/testing/marionette/marionette-simpletest.js
 --- a/testing/marionette/marionette-simpletest.js
 +++ b/testing/marionette/marionette-simpletest.js

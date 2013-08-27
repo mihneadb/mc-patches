@@ -1,13 +1,30 @@
 # HG changeset patch
-# Parent 17143a9a0d838ced69fa159d8b12c7ecfcc5d8c4
+# Parent ce881259e2d0a10897c9ca1ecf116a1cba1a8e56
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 907455 - Enhance the xpcshell harness to provide per test resource usage data
 
 diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
 --- a/testing/xpcshell/head.js
 +++ b/testing/xpcshell/head.js
-@@ -402,16 +402,42 @@ function _execute_test() {
-           todo_checks: _todoChecks});
+@@ -379,16 +379,17 @@ function _execute_test() {
+ 
+   // Execute all of our cleanup functions.
+   var func;
+   while ((func = _cleanupFunctions.pop()))
+     func();
+ 
+   // Restore idle service to avoid leaks.
+   _fakeIdleService.deactivate();
++  resourceStuff();
+ 
+   if (!_passed)
+     return;
+ 
+   var truePassedChecks = _passedChecks - _falsePassedChecks;
+   if (truePassedChecks > 0) {
+     _log("test_pass",
+          {_message: "TEST-PASS | (xpcshell/head.js) | " + truePassedChecks + " (+ " +
+@@ -403,16 +404,58 @@ function _execute_test() {
    } else {
      // ToDo: switch to TEST-UNEXPECTED-FAIL when all tests have been updated. (Bug 496443)
      _log("test_info",
@@ -15,33 +32,49 @@ diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
                      ") checks actually run\n",
           source_file: _TEST_FILE});
    }
-+  if (typeof _RESOURCE_PORT != "undefined") {
-+    dump("~~~~~~~~~~ " + _RESOURCE_PORT + "\n");
+ }
++function resourceStuff() {
++  if (runningInParent && typeof _RESOURCE_PORT != "undefined") {
++    dump("JS PORT: " + _RESOURCE_PORT + "\n");
 +    let transportService = Components.classes["@mozilla.org/network/socket-transport-service;1"]
 +      .getService(Components.interfaces.nsISocketTransportService);
-+    let transport = transportService.createTransport(null, 0, "localhost", _RESOURCE_PORT, null);
-+    let outputStream = transport.openOutputStream(1, 0, 0);
-+    let inputStream = transport.openInputStream(1, 0, 0);
-+    const nsIScriptableInputStream = Components.interfaces.nsIScriptableInputStream;
-+    var factory = Components.classes["@mozilla.org/scriptableinputstream;1"];
-+    let sis = factory.createInstance(nsIScriptableInputStream);
-+    sis.init(inputStream);
++    let transport = transportService.createTransport(null, 0, "localhost", _RESOURCE_PORT + 0, null);
++    const Ci = Components.interfaces;
++    let outputStream = transport.openOutputStream(Ci.nsITransport.OPEN_BLOCKING, 0, 0);
++    let inputStream = transport.openInputStream(Ci.nsITransport.OPEN_BLOCKING, 0, 0);
++    const BinaryInputStream = Components.Constructor("@mozilla.org/binaryinputstream;1",
++                              "nsIBinaryInputStream",
++                              "setInputStream");
 +
 +    // tell harness we are ready
 +    let message = "RDY";
 +    outputStream.write(message, message.length);
 +    outputStream.close();
 +
++    var bin = new BinaryInputStream(inputStream);
++    dump("reading..\n");
++    var data = bin.readBytes(3);
++    dump("~!!!! " + data +"-\n");
++    //transport.close();
++
 +    // wait for ACK from the harness
 +
 +    // this blocks so we wait here
-+    //let msg = sis.readBytes(512);
-+    dump("READ..\n");
++    //let msg = inputStream.read();
++    //dump("calling read...\n");
++    //let av = sis.available();
++    //while (av == 0) {
++      //av = sis.available();
++    //}
++    //dump(av);
++    //let msg = sis.read(2);
++    //dump("READ.. " + msg + "\n");
 +
-+    inputStream.close();
++    //inputStream.close();
++    //setTimeout(function(){}, 2000);
++    //
 +  }
-+
- }
++}
  
  /**
   * Loads files.
@@ -49,7 +82,8 @@ diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
   * @param aFiles Array of files to load.
   */
  function _load_files(aFiles) {
-@@ -875,20 +901,20 @@ function do_test_pending(aName) {
+   function loadTailFile(element, index, array) {
+@@ -875,20 +918,20 @@ function do_test_pending(aName) {
         {_message: "TEST-INFO | (xpcshell/head.js) | test" +
                    (aName ? " " + aName : "") +
                    " pending (" + _tests_pending + ")\n"});
@@ -222,7 +256,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          self.failCount = 0
  
          self.output_lines = []
-@@ -176,21 +179,74 @@ class XPCShellTestThread(Thread):
+@@ -176,21 +179,81 @@ class XPCShellTestThread(Thread):
  
      def getReturnCode(self, proc):
          """
@@ -235,9 +269,12 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +        # get process data (if available)
 +        if HAVE_PSUTIL and self.resource_logs is not None:
 +            # wait for the process to be done
++            print "Waiting for accept", self.resource_port
 +            conn, addr = self.sock.accept()
++            print "Accepted", self.resource_port
 +            # wait for a msg from the process saying "I'm done"
-+            data = conn.recv(4096)
++            data = conn.recv(4)
++            print ">>>>>>>>>>>>>>got", data, "from socket"
 +
 +            # record the actual data
 +            attrs = [
@@ -253,9 +290,13 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +
 +            # tell xpcshell to carry on
 +            #import time; time.sleep(1)
-+            conn.sendall("ACK")
++            print "sending"
++            conn.send("ACK")
++            print "sent"
 +            conn.close()
++            print "closed"
 +            self.sock.close()
++            print "main socket closed"
 +
 +            # process the captured data
 +            # convert psutil's own format to dicts
@@ -297,7 +338,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
            On a remote system, this is more complex and we need to overload this function.
          """
          if HAVE_PSUTIL:
-@@ -301,16 +357,23 @@ class XPCShellTestThread(Thread):
+@@ -301,16 +364,23 @@ class XPCShellTestThread(Thread):
                      raise Exception('%s file is not a file: %s' % (kind, path))
  
                  yield path
@@ -321,7 +362,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          #   do_load_child_test_harness() in head.js
          if not self.appPath:
              self.appPath = self.xrePath
-@@ -319,18 +382,20 @@ class XPCShellTestThread(Thread):
+@@ -319,18 +389,20 @@ class XPCShellTestThread(Thread):
              self.xpcshell,
              '-g', self.xrePath,
              '-a', self.appPath,
@@ -343,7 +384,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  '-e',
                  'const _TESTING_MODULES_DIR = "%s";' % sanitized
              ])
-@@ -582,20 +647,24 @@ class XPCShellTestThread(Thread):
+@@ -582,20 +654,24 @@ class XPCShellTestThread(Thread):
                          for k, v in self.test_object.items():
                              f.write('%s = %s\n' % (k, v))
  
@@ -368,7 +409,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  else:
                      self.todoCount = 1
                      self.xunit_result["todo"] = True
-@@ -1066,17 +1135,17 @@ class XPCShellTests(object):
+@@ -1066,17 +1142,17 @@ class XPCShellTests(object):
                   manifest=None, testdirs=None, testPath=None, mobileArgs=None,
                   interactive=False, verbose=False, keepGoing=False, logfiles=True,
                   thisChunk=1, totalChunks=1, debugger=None,
@@ -387,7 +428,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |symbolsPath|, if provided is the path to a directory containing
            breakpad symbols for processing crashes in tests.
          |manifest|, if provided, is a file containing a list of
-@@ -1212,16 +1281,17 @@ class XPCShellTests(object):
+@@ -1212,16 +1288,17 @@ class XPCShellTests(object):
          if self.singleFile:
              self.sequential = True
  
@@ -405,7 +446,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              'debuggerInfo': self.debuggerInfo,
              'pluginsPath': self.pluginsPath,
              'httpdManifest': self.httpdManifest,
-@@ -1264,17 +1334,18 @@ class XPCShellTests(object):
+@@ -1264,17 +1341,18 @@ class XPCShellTests(object):
                  continue
  
              self.testCount += 1
@@ -425,7 +466,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          if self.sequential:
              self.log.info("INFO | Running tests sequentially.")
          else:
-@@ -1330,16 +1401,17 @@ class XPCShellTests(object):
+@@ -1330,16 +1408,17 @@ class XPCShellTests(object):
                  if not keep_going:
                      self.log.error("TEST-UNEXPECTED-FAIL | Received SIGINT (control-C), so stopped run. " \
                                     "(Use --keep-going to keep running tests after killing one with SIGINT)")
@@ -443,7 +484,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          signal.signal(signal.SIGINT, signal.SIG_DFL)
  
          self.shutdownNode()
-@@ -1363,16 +1435,20 @@ class XPCShellTests(object):
+@@ -1363,16 +1442,20 @@ class XPCShellTests(object):
              self.log.error("TEST-UNEXPECTED-FAIL | runxpcshelltests.py | No tests run. Did you pass an invalid --test-path?")
              self.failCount = 1
  
@@ -464,7 +505,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                                     name=xunitName)
  
          if gotSIGINT and not keepGoing:
-@@ -1439,16 +1515,19 @@ class XPCShellOptions(OptionParser):
+@@ -1439,16 +1522,19 @@ class XPCShellOptions(OptionParser):
                          type = "string", dest="profileName", default=None,
                          help="name of application profile being tested")
          self.add_option("--build-info-json",
