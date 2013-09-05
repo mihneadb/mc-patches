@@ -1,0 +1,345 @@
+# HG changeset patch
+# Parent 6471dd17896f3e81a594dc174eaacb9280b070db
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 907455 - Enhance the xpcshell harness to provide per test resource usage data
+
+diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
+--- a/testing/xpcshell/head.js
++++ b/testing/xpcshell/head.js
+@@ -380,16 +380,26 @@ function _execute_test() {
+   // Execute all of our cleanup functions.
+   var func;
+   while ((func = _cleanupFunctions.pop()))
+     func();
+ 
+   // Restore idle service to avoid leaks.
+   _fakeIdleService.deactivate();
+ 
++  if (runningInParent && typeof _LOG_RESOURCE_USAGE != "undefined") {
++    Components.utils.import("resource://gre/modules/ProcessInfo.jsm");
++    let resources = {
++      IO: ProcessInfo.getIOCounters(),
++      CPU: ProcessInfo.getCPUTimes(),
++      MEM: ProcessInfo.getMemoryUsage()
++    };
++    _log("resource_usage", {resource_data: resources});
++  }
++
+   if (!_passed)
+     return;
+ 
+   var truePassedChecks = _passedChecks - _falsePassedChecks;
+   if (truePassedChecks > 0) {
+     _log("test_pass",
+          {_message: "TEST-PASS | (xpcshell/head.js) | " + truePassedChecks + " (+ " +
+                     _falsePassedChecks + ") check(s) passed\n",
+diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.py
+--- a/testing/xpcshell/mach_commands.py
++++ b/testing/xpcshell/mach_commands.py
+@@ -48,17 +48,17 @@ class XPCShellRunner(MozbuildObject):
+         manifest = os.path.join(self.topobjdir, '_tests', 'xpcshell',
+             'xpcshell.ini')
+ 
+         return self._run_xpcshell_harness(manifest=manifest, **kwargs)
+ 
+     def run_test(self, test_file, interactive=False,
+                  keep_going=False, sequential=False, shuffle=False,
+                  debugger=None, debuggerArgs=None, debuggerInteractive=None,
+-                 rerun_failures=False):
++                 rerun_failures=False, resource_usage_log=None):
+         """Runs an individual xpcshell test."""
+         # TODO Bug 794506 remove once mach integrates with virtualenv.
+         build_path = os.path.join(self.topobjdir, 'build')
+         if build_path not in sys.path:
+             sys.path.append(build_path)
+ 
+         if test_file == 'all':
+             self.run_suite(interactive=interactive,
+@@ -91,29 +91,30 @@ class XPCShellRunner(MozbuildObject):
+             'interactive': interactive,
+             'keep_going': keep_going,
+             'shuffle': shuffle,
+             'sequential': sequential,
+             'test_dirs': xpcshell_dirs,
+             'debugger': debugger,
+             'debuggerArgs': debuggerArgs,
+             'debuggerInteractive': debuggerInteractive,
+-            'rerun_failures': rerun_failures
++            'rerun_failures': rerun_failures,
++            'resource_usage_log': resource_usage_log
+         }
+ 
+         if os.path.isfile(path_arg.srcdir_path()):
+             args['test_path'] = mozpack.path.basename(path_arg.srcdir_path())
+ 
+         return self._run_xpcshell_harness(**args)
+ 
+     def _run_xpcshell_harness(self, test_dirs=None, manifest=None,
+                               test_path=None, shuffle=False, interactive=False,
+                               keep_going=False, sequential=False,
+                               debugger=None, debuggerArgs=None, debuggerInteractive=None,
+-                              rerun_failures=False):
++                              rerun_failures=False, resource_usage_log=None):
+ 
+         # Obtain a reference to the xpcshell test runner.
+         import runxpcshelltests
+ 
+         dummy_log = StringIO()
+         xpcshell = runxpcshelltests.XPCShellTests(log=dummy_log)
+         self.log_manager.enable_unstructured()
+ 
+@@ -137,16 +138,17 @@ class XPCShellRunner(MozbuildObject):
+             'profileName': 'firefox',
+             'verbose': test_path is not None,
+             'xunitFilename': os.path.join(self.statedir, 'xpchsell.xunit.xml'),
+             'xunitName': 'xpcshell',
+             'pluginsPath': os.path.join(self.distdir, 'plugins'),
+             'debugger': debugger,
+             'debuggerArgs': debuggerArgs,
+             'debuggerInteractive': debuggerInteractive,
++            'resource_usage_log': resource_usage_log
+         }
+ 
+         if manifest is not None:
+             args['manifest'] = manifest
+         elif test_dirs is not None:
+             if isinstance(test_dirs, list):
+                 args['testdirs'] = test_dirs
+             else:
+@@ -218,16 +220,19 @@ class MachCommands(MachCommandBase):
+     @CommandArgument('--keep-going', '-k', action='store_true',
+         help='Continue running tests after a SIGINT is received.')
+     @CommandArgument('--sequential', action='store_true',
+         help='Run the tests sequentially.')
+     @CommandArgument('--shuffle', '-s', action='store_true',
+         help='Randomize the execution order of tests.')
+     @CommandArgument('--rerun-failures', action='store_true',
+         help='Reruns failures from last time.')
++    @CommandArgument('--resource-usage-log', default=None,
++        dest='resource_usage_log',
++        help='Path for dumping JSON data of used resources.')
+     def run_xpcshell_test(self, **params):
+         # We should probably have a utility function to ensure the tree is
+         # ready to run tests. Until then, we just create the state dir (in
+         # case the tree wasn't built with mach).
+         self._ensure_state_subdir_exists('.')
+ 
+         xpcshell = self._spawn(XPCShellRunner)
+ 
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -84,17 +84,17 @@ gotSIGINT = False
+ def markGotSIGINT(signum, stackFrame):
+     global gotSIGINT
+     gotSIGINT = True
+ 
+ class XPCShellTestThread(Thread):
+     def __init__(self, test_object, event, cleanup_dir_list, retry=True,
+             tests_root_dir=None, app_dir_key=None, interactive=False,
+             verbose=False, pStdout=None, pStderr=None, keep_going=False,
+-            log=None, **kwargs):
++            log=None, resource_usage_list=None, **kwargs):
+         Thread.__init__(self)
+         self.daemon = True
+ 
+         self.test_object = test_object
+         self.cleanup_dir_list = cleanup_dir_list
+         self.retry = retry
+ 
+         self.appPath = kwargs.get('appPath')
+@@ -125,16 +125,18 @@ class XPCShellTestThread(Thread):
+         self.log = log
+ 
+         # only one of these will be set to 1. adding them to the totals in
+         # the harness
+         self.passCount = 0
+         self.todoCount = 0
+         self.failCount = 0
+ 
++        self.resource_usage_list = resource_usage_list
++
+         self.output_lines = []
+         self.has_failure_output = False
+ 
+         # event from main thread to signal work done
+         self.event = event
+         self.done = False # explicitly set flag so we don't rely on thread.isAlive
+ 
+     def run(self):
+@@ -354,16 +356,22 @@ class XPCShellTestThread(Thread):
+         # setting up every test with its own plugins directory.
+         if not self.pluginsPath:
+             self.pluginsPath = os.path.join(self.appPath, 'plugins')
+ 
+         self.pluginsDir = self.setupPluginsDir()
+         if self.pluginsDir:
+             self.xpcsCmd.extend(['-p', self.pluginsDir])
+ 
++        if self.resource_usage_list is not None:
++            self.xpcsCmd.extend([
++                '-e',
++                'const _LOG_RESOURCE_USAGE = true;'
++            ])
++
+     def cleanupDir(self, directory, name, xunit_result):
+         if not os.path.exists(directory):
+             return
+ 
+         TRY_LIMIT = 25 # up to TRY_LIMIT attempts (one every second), because
+                        # the Windows filesystem is slow to react to the changes
+         try_count = 0
+         while try_count < TRY_LIMIT:
+@@ -438,17 +446,20 @@ class XPCShellTestThread(Thread):
+ 
+             if 'action' not in line_object:
+                 # In case a test outputs something that happens to be valid
+                 # JSON object.
+                 self.append_message_from_line(line_string)
+                 continue
+ 
+             action = line_object['action']
+-            self.append_message_from_line(line_object)
++            if action == 'resource_usage':
++                self.resource_data = line_object['resource_data']
++            else:
++                self.append_message_from_line(line_object)
+ 
+             if action in FAILURE_ACTIONS:
+                 self.has_failure_output = True
+ 
+             elif action == 'child_test_start':
+                 seen_proc_start = True
+             elif action == 'child_test_end':
+                 seen_proc_end = True
+@@ -601,16 +612,28 @@ class XPCShellTestThread(Thread):
+                         for k, v in self.test_object.items():
+                             f.write('%s = %s\n' % (k, v))
+ 
+             else:
+                 now = time.time()
+                 timeTaken = (now - startTime) * 1000
+                 self.xunit_result["time"] = now - startTime
+ 
++                if self.resource_usage_list is not None:
++                    self.resource_data["duration"] = timeTaken
++                    # get test file path relative to $SRC_DIR
++                    full_path = self.test_object["path"]
++                    if "xpcshell" in full_path:
++                        path = "xpcshell".join(full_path.split("xpcshell")[1:])
++                    else:
++                        path = full_path
++                    test_file = str(path[1:])
++                    self.resource_data["test_file"] = test_file
++                    self.resource_usage_list.append(self.resource_data)
++
+                 with LOG_MUTEX:
+                     self.log.info("TEST-%s | %s | test passed (time: %.3fms)" % ("PASS" if expected else "KNOWN-FAIL", name, timeTaken))
+                     if self.verbose:
+                         self.log_output(self.output_lines)
+ 
+                 self.xunit_result["passed"] = True
+                 self.retry = False
+ 
+@@ -1086,17 +1109,17 @@ class XPCShellTests(object):
+                  manifest=None, testdirs=None, testPath=None, mobileArgs=None,
+                  interactive=False, verbose=False, keepGoing=False, logfiles=True,
+                  thisChunk=1, totalChunks=1, debugger=None,
+                  debuggerArgs=None, debuggerInteractive=False,
+                  profileName=None, mozInfo=None, sequential=False, shuffle=False,
+                  testsRootDir=None, xunitFilename=None, xunitName=None,
+                  testingModulesDir=None, autolog=False, pluginsPath=None,
+                  testClass=XPCShellTestThread, failureManifest=None,
+-                 **otherOptions):
++                 resource_usage_log=None, **otherOptions):
+         """Run xpcshell tests.
+ 
+         |xpcshell|, is the xpcshell executable to use to run the tests.
+         |xrePath|, if provided, is the path to the XRE to use.
+         |appPath|, if provided, is the path to an application directory.
+         |symbolsPath|, if provided is the path to a directory containing
+           breakpad symbols for processing crashes in tests.
+         |manifest|, if provided, is a file containing a list of
+@@ -1234,16 +1257,20 @@ class XPCShellTests(object):
+ 
+         if shuffle:
+             random.shuffle(self.alltests)
+ 
+         self.xunitResults = []
+         self.cleanup_dir_list = []
+         self.try_again_list = []
+ 
++        resource_usage_list = None
++        if resource_usage_log:
++            resource_usage_list = []
++
+         kwargs = {
+             'appPath': self.appPath,
+             'xrePath': self.xrePath,
+             'testingModulesDir': self.testingModulesDir,
+             'debuggerInfo': self.debuggerInfo,
+             'pluginsPath': self.pluginsPath,
+             'httpdManifest': self.httpdManifest,
+             'httpdJSPath': self.httpdJSPath,
+@@ -1251,17 +1278,18 @@ class XPCShellTests(object):
+             'testharnessdir': self.testharnessdir,
+             'profileName': self.profileName,
+             'singleFile': self.singleFile,
+             'env': self.env, # making a copy of this in the testthreads
+             'symbolsPath': self.symbolsPath,
+             'logfiles': self.logfiles,
+             'xpcshell': self.xpcshell,
+             'xpcsRunArgs': self.xpcsRunArgs,
+-            'failureManifest': failureManifest
++            'failureManifest': failureManifest,
++            'resource_usage_list': resource_usage_list,
+         }
+ 
+         if self.sequential:
+             # Allow user to kill hung xpcshell subprocess with SIGINT
+             # when we are only running tests sequentially.
+             signal.signal(signal.SIGINT, markGotSIGINT)
+ 
+         if self.debuggerInfo:
+@@ -1426,16 +1454,21 @@ class XPCShellTests(object):
+             self.writeXunitResults(filename=xunitFilename, results=self.xunitResults,
+                                    name=xunitName)
+ 
+         if gotSIGINT and not keepGoing:
+             self.log.error("TEST-UNEXPECTED-FAIL | Received SIGINT (control-C), so stopped run. " \
+                            "(Use --keep-going to keep running tests after killing one with SIGINT)")
+             return False
+ 
++        if resource_usage_log:
++            with open(resource_usage_log, 'w') as f:
++                json.dump(resource_usage_list, f, sort_keys=True, indent=2)
++                print "Resource usage log stored at %s." % resource_usage_log
++
+         return self.failCount == 0
+ 
+ class XPCShellOptions(OptionParser):
+     def __init__(self):
+         """Process command line arguments and call runTests() to do the real work."""
+         OptionParser.__init__(self)
+ 
+         addCommonOptions(self)
+@@ -1499,16 +1532,19 @@ class XPCShellOptions(OptionParser):
+                         help="path to file where xUnit results will be written.")
+         self.add_option("--xunit-suite-name", dest="xunitName",
+                         help="name to record for this xUnit test suite. Many "
+                              "tools expect Java class notation, e.g. "
+                              "dom.basic.foo")
+         self.add_option("--failure-manifest", dest="failureManifest",
+                         action="store",
+                         help="path to file where failure manifest will be written.")
++        self.add_option("--resource-usage-log", default=None,
++                        dest='resource_usage_log',
++                        help='Path for dumping JSON data of used resources.')
+ 
+ def main():
+     parser = XPCShellOptions()
+     options, args = parser.parse_args()
+ 
+     if len(args) < 2 and options.manifest is None or \
+        (len(args) < 1 and options.manifest is not None):
+         print >>sys.stderr, """Usage: %s <path to xpcshell> <test dirs>

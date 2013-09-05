@@ -1,0 +1,30 @@
+# HG changeset patch
+# Parent a6e4a8ecd04d3b8457cf6278f12ad9ed0e561572
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 911249 - Followup for WindowsError, Access denied
+
+diff --git a/build/automation.py.in b/build/automation.py.in
+--- a/build/automation.py.in
++++ b/build/automation.py.in
+@@ -533,17 +533,20 @@ class Automation(object):
+       except OSError,err:
+         self.log.info("Failed determine available memory, disabling ASan low-memory configuration: %s", err.strerror)
+       except:
+         self.log.info("Failed determine available memory, disabling ASan low-memory configuration")
+ 
+     return env
+ 
+   def killPid(self, pid):
+-    os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
++    try:
++      os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
++    except WindowsError:
++      self.log.info("Failed to kill process %d." % pid)
+ 
+   if IS_WIN32:
+     PeekNamedPipe = ctypes.windll.kernel32.PeekNamedPipe
+     GetLastError = ctypes.windll.kernel32.GetLastError
+ 
+     def readWithTimeout(self, f, timeout):
+       """
+       Try to read a line of output from the file object |f|. |f| must be a

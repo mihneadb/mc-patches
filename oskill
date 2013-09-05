@@ -1,0 +1,73 @@
+# HG changeset patch
+# Parent cfe8b0ab6d59359abe8074332d394ab667635089
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 911262 - Use os.kill instead of ctypes in automation.py
+
+diff --git a/build/automation.py.in b/build/automation.py.in
+--- a/build/automation.py.in
++++ b/build/automation.py.in
+@@ -532,16 +532,19 @@ class Automation(object):
+           self.log.info("INFO | automation.py | ASan running in default memory configuration")
+       except OSError,err:
+         self.log.info("Failed determine available memory, disabling ASan low-memory configuration: %s", err.strerror)
+       except:
+         self.log.info("Failed determine available memory, disabling ASan low-memory configuration")
+ 
+     return env
+ 
++  def killPid(self, pid):
++    os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
++
+   if IS_WIN32:
+     PeekNamedPipe = ctypes.windll.kernel32.PeekNamedPipe
+     GetLastError = ctypes.windll.kernel32.GetLastError
+ 
+     def readWithTimeout(self, f, timeout):
+       """
+       Try to read a line of output from the file object |f|. |f| must be a
+       pipe, like the |stdout| member of a subprocess.Popen object created
+@@ -582,24 +585,16 @@ class Automation(object):
+       pHandle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+       if not pHandle:
+         return False
+       pExitCode = ctypes.wintypes.DWORD()
+       ctypes.windll.kernel32.GetExitCodeProcess(pHandle, ctypes.byref(pExitCode))
+       ctypes.windll.kernel32.CloseHandle(pHandle)
+       return pExitCode.value == STILL_ACTIVE
+ 
+-    def killPid(self, pid):
+-      PROCESS_TERMINATE = 0x0001
+-      pHandle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, 0, pid)
+-      if not pHandle:
+-        return
+-      ctypes.windll.kernel32.TerminateProcess(pHandle, 1)
+-      ctypes.windll.kernel32.CloseHandle(pHandle)
+-
+   else:
+ 
+     def readWithTimeout(self, f, timeout):
+       """Try to read a line of output from the file object |f|. If no output
+       is received within |timeout| seconds, return a blank line.
+       Returns a tuple (line, did_timeout), where |did_timeout| is True
+       if the read timed out, and False otherwise."""
+       (r, w, e) = select.select([f], [], [], timeout)
+@@ -619,19 +614,16 @@ class Automation(object):
+         return wpid == 0
+       except OSError, err:
+         # Catch the errors we might expect from os.kill/os.waitpid, 
+         # and re-raise any others
+         if err.errno == errno.ESRCH or err.errno == errno.ECHILD:
+           return False
+         raise
+ 
+-    def killPid(self, pid):
+-      os.kill(pid, signal.SIGKILL)
+-
+   def dumpScreen(self, utilityPath):
+     if self.haveDumpedScreen:
+       self.log.info("Not taking screenshot here: see the one that was previously logged")
+       return
+ 
+     self.haveDumpedScreen = True;
+ 
+     # Need to figure out what tool and whether it write to a file or stdout

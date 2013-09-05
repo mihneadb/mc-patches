@@ -1,0 +1,80 @@
+# HG changeset patch
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+# Date 1378065771 25200
+#      Sun Sep 01 13:02:51 2013 -0700
+# Node ID a00b046282a6dec18fd3acedb2f67d67e1d1a623
+# Parent  89cca72331a8acfa2014f12f44423d92cafd853e
+Bug 911249 - Don't block XPCShell test harness on hangs caused by os.kill on Windows
+
+diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshelltests.py
+--- a/testing/xpcshell/runxpcshelltests.py
++++ b/testing/xpcshell/runxpcshelltests.py
+@@ -130,29 +130,31 @@ class XPCShellTestThread(Thread):
+         self.todoCount = 0
+         self.failCount = 0
+ 
+         self.output_lines = []
+         self.has_failure_output = False
+ 
+         # event from main thread to signal work done
+         self.event = event
++        self.done = False # explicitly set flag so we don't rely on thread.isAlive
+ 
+     def run(self):
+         try:
+             self.run_test()
+         except Exception as e:
+             self.exception = e
+             self.traceback = traceback.format_exc()
+         else:
+             self.exception = None
+             self.traceback = None
+         if self.retry:
+             self.log.info("TEST-INFO | %s | Test failed or timed out, will retry."
+                           % self.test_object['name'])
++        self.done = True
+         self.event.set()
+ 
+     def kill(self, proc):
+         """
+           Simple wrapper to kill a process.
+           On a remote system, this is overloaded to handle remote process communication.
+         """
+         return proc.kill()
+@@ -213,16 +215,17 @@ class XPCShellTestThread(Thread):
+         # the ambient environment.
+         changedEnv = (set("%s=%s" % i for i in self.env.iteritems())
+                       - set("%s=%s" % i for i in os.environ.iteritems()))
+         self.log.info("TEST-INFO | %s | environment: %s" % (name, list(changedEnv)))
+ 
+     def testTimeout(self, test_file, processPID):
+         if not self.retry:
+             self.log.error("TEST-UNEXPECTED-FAIL | %s | Test timed out" % test_file)
++        self.done = True
+         Automation().killAndGetStackNoScreenshot(processPID, self.appPath, self.debuggerInfo)
+ 
+     def buildCmdTestFile(self, name):
+         """
+           Build the command line arguments for the test file.
+           On a remote system, this may be overloaded to use a remote path structure.
+         """
+         return ['-e', 'const _TEST_FILE = ["%s"];' %
+@@ -1333,17 +1336,17 @@ class XPCShellTests(object):
+ 
+             # wait for at least one of the tests to finish
+             self.event.wait(1)
+             self.event.clear()
+ 
+             # find what tests are done (might be more than 1)
+             done_tests = set()
+             for test in running_tests:
+-                if not test.is_alive():
++                if test.done:
+                     done_tests.add(test)
+                     test.join()
+                     # if the test had trouble, we will try running it again
+                     # at the end of the run
+                     if test.retry:
+                         self.try_again_list.append(test.test_object)
+                         continue
+                     # did the test encounter any exception?
