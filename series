@@ -1,4 +1,5 @@
-raise
+b2g-libs
+try-xpc-mobile
 profileJS
 profileH
 unblock
@@ -10,5 +11,4 @@ try-xpc-all
 try-marionette-some
 try-reftest-all
 try-xpc-desktop-all
-try-xpc-mobile
 try-reftest-desktop
