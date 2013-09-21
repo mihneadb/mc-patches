@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent 6471dd17896f3e81a594dc174eaacb9280b070db
+# Parent d8505c01b8d939db5b334cf5926ae726c858edb9
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 907455 - Enhance the xpcshell harness to provide per test resource usage data
 
@@ -18,9 +18,9 @@ diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
 +  if (runningInParent && typeof _LOG_RESOURCE_USAGE != "undefined") {
 +    Components.utils.import("resource://gre/modules/ProcessInfo.jsm");
 +    let resources = {
-+      IO: ProcessInfo.getIOCounters(),
-+      CPU: ProcessInfo.getCPUTimes(),
-+      MEM: ProcessInfo.getMemoryUsage()
++      io: ProcessInfo.getIOCounters(),
++      cpu: ProcessInfo.getCPUTimes(),
++      mem: ProcessInfo.getMemoryUsage()
 +    };
 +    _log("resource_usage", {resource_data: resources});
 +  }
@@ -36,7 +36,7 @@ diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
 diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.py
 --- a/testing/xpcshell/mach_commands.py
 +++ b/testing/xpcshell/mach_commands.py
-@@ -48,17 +48,17 @@ class XPCShellRunner(MozbuildObject):
+@@ -48,29 +48,30 @@ class XPCShellRunner(MozbuildObject):
          manifest = os.path.join(self.topobjdir, '_tests', 'xpcshell',
              'xpcshell.ini')
  
@@ -46,7 +46,7 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
                   keep_going=False, sequential=False, shuffle=False,
                   debugger=None, debuggerArgs=None, debuggerInteractive=None,
 -                 rerun_failures=False):
-+                 rerun_failures=False, resource_usage_log=None):
++                 rerun_failures=False, resource_usage_file=None):
          """Runs an individual xpcshell test."""
          # TODO Bug 794506 remove once mach integrates with virtualenv.
          build_path = os.path.join(self.topobjdir, 'build')
@@ -55,7 +55,21 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
  
          if test_file == 'all':
              self.run_suite(interactive=interactive,
-@@ -91,29 +91,30 @@ class XPCShellRunner(MozbuildObject):
+                            keep_going=keep_going, shuffle=shuffle, sequential=sequential,
+                            debugger=debugger, debuggerArgs=debuggerArgs,
+                            debuggerInteractive=debuggerInteractive,
+-                           rerun_failures=rerun_failures)
++                           rerun_failures=rerun_failures,
++                           resource_usage_file=resource_usage_file)
+             return
+ 
+         path_arg = self._wrap_path_argument(test_file)
+ 
+         test_obj_dir = os.path.join(self.topobjdir, '_tests', 'xpcshell',
+             path_arg.relpath())
+         if os.path.isfile(test_obj_dir):
+             test_obj_dir = mozpack.path.dirname(test_obj_dir)
+@@ -91,29 +92,30 @@ class XPCShellRunner(MozbuildObject):
              'interactive': interactive,
              'keep_going': keep_going,
              'shuffle': shuffle,
@@ -66,7 +80,7 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
              'debuggerInteractive': debuggerInteractive,
 -            'rerun_failures': rerun_failures
 +            'rerun_failures': rerun_failures,
-+            'resource_usage_log': resource_usage_log
++            'resource_usage_file': resource_usage_file
          }
  
          if os.path.isfile(path_arg.srcdir_path()):
@@ -79,7 +93,7 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
                                keep_going=False, sequential=False,
                                debugger=None, debuggerArgs=None, debuggerInteractive=None,
 -                              rerun_failures=False):
-+                              rerun_failures=False, resource_usage_log=None):
++                              rerun_failures=False, resource_usage_file=None):
  
          # Obtain a reference to the xpcshell test runner.
          import runxpcshelltests
@@ -88,7 +102,7 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
          xpcshell = runxpcshelltests.XPCShellTests(log=dummy_log)
          self.log_manager.enable_unstructured()
  
-@@ -137,16 +138,17 @@ class XPCShellRunner(MozbuildObject):
+@@ -137,16 +139,17 @@ class XPCShellRunner(MozbuildObject):
              'profileName': 'firefox',
              'verbose': test_path is not None,
              'xunitFilename': os.path.join(self.statedir, 'xpchsell.xunit.xml'),
@@ -97,7 +111,7 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
              'debugger': debugger,
              'debuggerArgs': debuggerArgs,
              'debuggerInteractive': debuggerInteractive,
-+            'resource_usage_log': resource_usage_log
++            'resource_usage_file': resource_usage_file
          }
  
          if manifest is not None:
@@ -106,7 +120,7 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
              if isinstance(test_dirs, list):
                  args['testdirs'] = test_dirs
              else:
-@@ -218,16 +220,19 @@ class MachCommands(MachCommandBase):
+@@ -218,16 +221,19 @@ class MachCommands(MachCommandBase):
      @CommandArgument('--keep-going', '-k', action='store_true',
          help='Continue running tests after a SIGINT is received.')
      @CommandArgument('--sequential', action='store_true',
@@ -115,8 +129,8 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
          help='Randomize the execution order of tests.')
      @CommandArgument('--rerun-failures', action='store_true',
          help='Reruns failures from last time.')
-+    @CommandArgument('--resource-usage-log', default=None,
-+        dest='resource_usage_log',
++    @CommandArgument('--resource-usage-file', default=None,
++        dest='resource_usage_file',
 +        help='Path for dumping JSON data of used resources.')
      def run_xpcshell_test(self, **params):
          # We should probably have a utility function to ensure the tree is
@@ -139,7 +153,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              tests_root_dir=None, app_dir_key=None, interactive=False,
              verbose=False, pStdout=None, pStderr=None, keep_going=False,
 -            log=None, **kwargs):
-+            log=None, resource_usage_list=None, **kwargs):
++            log=None, resource_usage_results=None, **kwargs):
          Thread.__init__(self)
          self.daemon = True
  
@@ -157,7 +171,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          self.todoCount = 0
          self.failCount = 0
  
-+        self.resource_usage_list = resource_usage_list
++        self.resource_usage_results = resource_usage_results
 +
          self.output_lines = []
          self.has_failure_output = False
@@ -176,7 +190,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          if self.pluginsDir:
              self.xpcsCmd.extend(['-p', self.pluginsDir])
  
-+        if self.resource_usage_list is not None:
++        if self.resource_usage_results is not None:
 +            self.xpcsCmd.extend([
 +                '-e',
 +                'const _LOG_RESOURCE_USAGE = true;'
@@ -212,7 +226,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  seen_proc_start = True
              elif action == 'child_test_end':
                  seen_proc_end = True
-@@ -601,16 +612,28 @@ class XPCShellTestThread(Thread):
+@@ -601,16 +612,20 @@ class XPCShellTestThread(Thread):
                          for k, v in self.test_object.items():
                              f.write('%s = %s\n' % (k, v))
  
@@ -221,17 +235,9 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  timeTaken = (now - startTime) * 1000
                  self.xunit_result["time"] = now - startTime
  
-+                if self.resource_usage_list is not None:
++                if self.resource_usage_results is not None:
 +                    self.resource_data["duration"] = timeTaken
-+                    # get test file path relative to $SRC_DIR
-+                    full_path = self.test_object["path"]
-+                    if "xpcshell" in full_path:
-+                        path = "xpcshell".join(full_path.split("xpcshell")[1:])
-+                    else:
-+                        path = full_path
-+                    test_file = str(path[1:])
-+                    self.resource_data["test_file"] = test_file
-+                    self.resource_usage_list.append(self.resource_data)
++                    self.resource_usage_results[self.test_object["path"]] = self.resource_data
 +
                  with LOG_MUTEX:
                      self.log.info("TEST-%s | %s | test passed (time: %.3fms)" % ("PASS" if expected else "KNOWN-FAIL", name, timeTaken))
@@ -241,7 +247,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  self.xunit_result["passed"] = True
                  self.retry = False
  
-@@ -1086,17 +1109,17 @@ class XPCShellTests(object):
+@@ -1087,17 +1102,17 @@ class XPCShellTests(object):
                   manifest=None, testdirs=None, testPath=None, mobileArgs=None,
                   interactive=False, verbose=False, keepGoing=False, logfiles=True,
                   thisChunk=1, totalChunks=1, debugger=None,
@@ -251,7 +257,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                   testingModulesDir=None, autolog=False, pluginsPath=None,
                   testClass=XPCShellTestThread, failureManifest=None,
 -                 **otherOptions):
-+                 resource_usage_log=None, **otherOptions):
++                 resource_usage_file=None, **otherOptions):
          """Run xpcshell tests.
  
          |xpcshell|, is the xpcshell executable to use to run the tests.
@@ -260,7 +266,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |symbolsPath|, if provided is the path to a directory containing
            breakpad symbols for processing crashes in tests.
          |manifest|, if provided, is a file containing a list of
-@@ -1234,16 +1257,20 @@ class XPCShellTests(object):
+@@ -1235,16 +1250,20 @@ class XPCShellTests(object):
  
          if shuffle:
              random.shuffle(self.alltests)
@@ -269,9 +275,9 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          self.cleanup_dir_list = []
          self.try_again_list = []
  
-+        resource_usage_list = None
-+        if resource_usage_log:
-+            resource_usage_list = []
++        resource_usage_results = None
++        if resource_usage_file:
++            resource_usage_results = {}
 +
          kwargs = {
              'appPath': self.appPath,
@@ -281,7 +287,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              'pluginsPath': self.pluginsPath,
              'httpdManifest': self.httpdManifest,
              'httpdJSPath': self.httpdJSPath,
-@@ -1251,17 +1278,18 @@ class XPCShellTests(object):
+@@ -1252,17 +1271,18 @@ class XPCShellTests(object):
              'testharnessdir': self.testharnessdir,
              'profileName': self.profileName,
              'singleFile': self.singleFile,
@@ -292,7 +298,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              'xpcsRunArgs': self.xpcsRunArgs,
 -            'failureManifest': failureManifest
 +            'failureManifest': failureManifest,
-+            'resource_usage_list': resource_usage_list,
++            'resource_usage_results': resource_usage_results,
          }
  
          if self.sequential:
@@ -301,7 +307,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              signal.signal(signal.SIGINT, markGotSIGINT)
  
          if self.debuggerInfo:
-@@ -1426,16 +1454,21 @@ class XPCShellTests(object):
+@@ -1428,16 +1448,25 @@ class XPCShellTests(object):
              self.writeXunitResults(filename=xunitFilename, results=self.xunitResults,
                                     name=xunitName)
  
@@ -310,10 +316,14 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                             "(Use --keep-going to keep running tests after killing one with SIGINT)")
              return False
  
-+        if resource_usage_log:
-+            with open(resource_usage_log, 'w') as f:
-+                json.dump(resource_usage_list, f, sort_keys=True, indent=2)
-+                print "Resource usage log stored at %s." % resource_usage_log
++        if resource_usage_file:
++            resource_usage_data = {
++                'version': 1.0,
++                'data': resource_usage_results,
++            }
++            with open(resource_usage_file, 'w') as f:
++                json.dump(resource_usage_data, f, sort_keys=True, indent=2)
++                print "Resource usage log stored at %s." % resource_usage_file
 +
          return self.failCount == 0
  
@@ -323,7 +333,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          OptionParser.__init__(self)
  
          addCommonOptions(self)
-@@ -1499,16 +1532,19 @@ class XPCShellOptions(OptionParser):
+@@ -1501,16 +1530,19 @@ class XPCShellOptions(OptionParser):
                          help="path to file where xUnit results will be written.")
          self.add_option("--xunit-suite-name", dest="xunitName",
                          help="name to record for this xUnit test suite. Many "
@@ -332,8 +342,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          self.add_option("--failure-manifest", dest="failureManifest",
                          action="store",
                          help="path to file where failure manifest will be written.")
-+        self.add_option("--resource-usage-log", default=None,
-+                        dest='resource_usage_log',
++        self.add_option("--resource-usage-file", default=None,
++                        dest='resource_usage_file',
 +                        help='Path for dumping JSON data of used resources.')
  
  def main():

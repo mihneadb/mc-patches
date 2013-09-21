@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent e3785e299ab6ea4c4f6f318ff601d73c6be9198c
+# Parent e42374f83509299ab8232fe7a7ebe1b14471bcfc
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 909577 - API for reading process info
 
@@ -7,7 +7,7 @@ diff --git a/toolkit/modules/ProcessInfo.jsm b/toolkit/modules/ProcessInfo.jsm
 new file mode 100644
 --- /dev/null
 +++ b/toolkit/modules/ProcessInfo.jsm
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,301 @@
 +/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -27,7 +27,7 @@ new file mode 100644
 +                .getService(Ci.nsIPropertyBag2);
 +let OS = {
 +  name: sysInfo.getProperty("name"),
-+  version: sysInfo.getProperty("version"),
++  version: sysInfo.getProperty("version")
 +};
 +
 +
@@ -60,8 +60,11 @@ new file mode 100644
 +
 +
 +let Windows = {
-+  getIOCounters: function () {
-+    let IO_COUNTERS = new ctypes.StructType("IO_COUNTERS", [
++  _setupCTypes: function () {
++    if (this._initialized) {
++      return;
++    }
++    this._IO_COUNTERS = new ctypes.StructType("IO_COUNTERS", [
 +      {'readOps': ctypes.unsigned_long_long},
 +      {'writeOps': ctypes.unsigned_long_long},
 +      {'otherOps': ctypes.unsigned_long_long},
@@ -69,36 +72,11 @@ new file mode 100644
 +      {'writeBytes': ctypes.unsigned_long_long},
 +      {'otherBytes': ctypes.unsigned_long_long}
 +    ]);
-+    let kernel32 = ctypes.open('Kernel32.dll');
-+
-+    let GetProcessIoCounters = kernel32.declare('GetProcessIoCounters',
-+                                                ctypes.winapi_abi,
-+                                                ctypes.bool, // return type
-+                                                ctypes.voidptr_t, // hProcess
-+                                                IO_COUNTERS.ptr); // lpIoCounters
-+
-+    let GetCurrentProcess = kernel32.declare('GetCurrentProcess',
-+                                             ctypes.winapi_abi,
-+                                             ctypes.voidptr_t); // return type
-+
-+    let io = new IO_COUNTERS();
-+    GetProcessIoCounters(GetCurrentProcess(), io.address());
-+
-+    let data = {
-+      readBytes: parseInt(io.readBytes),
-+      writeBytes: parseInt(io.writeBytes),
-+      otherBytes: parseInt(io.otherBytes)
-+    };
-+    data.total = data.readBytes + data.writeBytes + data.otherBytes;
-+    return data;
-+  },
-+
-+  getCPUTimes: function () {
-+    let FILETIME = new ctypes.StructType('_FILETIME', [
++    this._FILETIME = new ctypes.StructType('_FILETIME', [
 +      {'dwLowDateTime': ctypes.unsigned_long},
 +      {'dwHighDateTime': ctypes.unsigned_long}
 +    ]);
-+    let SYSTEMTIME = new ctypes.StructType('_SYSTEMTIME', [
++    this._SYSTEMTIME = new ctypes.StructType('_SYSTEMTIME', [
 +      {'wYear': ctypes.unsigned_short},
 +      {'wMonth': ctypes.unsigned_short},
 +      {'wDayOfWeek': ctypes.unsigned_short},
@@ -108,49 +86,73 @@ new file mode 100644
 +      {'wSecond': ctypes.unsigned_short},
 +      {'wMilliseconds': ctypes.unsigned_short}
 +    ]);
-+    let kernel32 = ctypes.open('Kernel32.dll');
++    this._kernel32 = ctypes.open('Kernel32.dll');
++    this._GetProcessIoCounters = this._kernel32.declare('GetProcessIoCounters',
++                                                ctypes.winapi_abi,
++                                                ctypes.bool, // return type
++                                                ctypes.voidptr_t, // hProcess
++                                                this._IO_COUNTERS.ptr); // lpIoCounters
 +
-+    let GetCurrentProcess = kernel32.declare('GetCurrentProcess',
++    this._GetCurrentProcess = this._kernel32.declare('GetCurrentProcess',
 +                                             ctypes.winapi_abi,
 +                                             ctypes.voidptr_t); // return type
-+
-+    let GetProcessTimes = kernel32.declare('GetProcessTimes',
++    this._GetProcessTimes = kernel32.declare('GetProcessTimes',
 +                                      ctypes.winapi_abi,
 +                                      ctypes.bool, // return type
 +                                      ctypes.voidptr_t, // hProcess
-+                                      FILETIME.ptr, // lpCreationTime
-+                                      FILETIME.ptr, // lpExitTime
-+                                      FILETIME.ptr, // lpKernelTime
-+                                      FILETIME.ptr); // lpUserTime
++                                      this._FILETIME.ptr, // lpCreationTime
++                                      this._FILETIME.ptr, // lpExitTime
++                                      this._FILETIME.ptr, // lpKernelTime
++                                      this._FILETIME.ptr); // lpUserTime
 +
-+    let FileTimeToSystemTime = kernel32.declare('FileTimeToSystemTime',
++    this._FileTimeToSystemTime = kernel32.declare('FileTimeToSystemTime',
 +                                          ctypes.winapi_abi,
 +                                          ctypes.bool, // return type
-+                                          FILETIME.ptr, // lpFileTime
-+                                          SYSTEMTIME.ptr); // lpSystemTime
++                                          this._FILETIME.ptr, // lpFileTime
++                                          this._SYSTEMTIME.ptr); // lpSystemTime
++    this._initialized = true;
++  },
 +
-+    let creationTime = new FILETIME();
-+    let exitTime = new FILETIME();
-+    let kernelTime = new FILETIME();
-+    let userTime = new FILETIME();
++  getIOCounters: function () {
++    this._setupCTypes();
++    let io = new this._IO_COUNTERS();
++    this._GetProcessIoCounters(this._GetCurrentProcess(), io.address());
 +
-+    GetProcessTimes(GetCurrentProcess(),
++    let data = {
++      readBytes: parseInt(io.readBytes, 10),
++      writeBytes: parseInt(io.writeBytes, 10),
++      otherBytes: parseInt(io.otherBytes, 10)
++    };
++    data.total = data.readBytes + data.writeBytes + data.otherBytes;
++    return data;
++  },
++
++  getCPUTimes: function () {
++    this._setupCTypes();
++    let creationTime = new this._FILETIME();
++    let exitTime = new this._FILETIME();
++    let kernelTime = new this._FILETIME();
++    let userTime = new this._FILETIME();
++
++    this._GetProcessTimes(this._GetCurrentProcess(),
 +                  creationTime.address(),
 +                  exitTime.address(),
 +                  kernelTime.address(),
 +                  userTime.address());
 +
-+    let processedKernelTime = new SYSTEMTIME();
-+    let processedUserTime = new SYSTEMTIME();
++    let processedKernelTime = new this._SYSTEMTIME();
++    let processedUserTime = new this._SYSTEMTIME();
 +
-+    FileTimeToSystemTime(kernelTime.address(), processedKernelTime.address());
-+    FileTimeToSystemTime(userTime.address(), processedUserTime.address());
++    this._FileTimeToSystemTime(kernelTime.address(), processedKernelTime.address());
++    this._FileTimeToSystemTime(userTime.address(), processedUserTime.address());
 +
 +    let data = {
-+      user: parseInt(processedUserTime.wSecond) +
-+            parseInt(processedUserTime.wMilliseconds) / 1000,
-+      sys: parseInt(processedKernelTime.wSecond) +
-+           parseInt(processedKernelTime.wMilliseconds) / 1000
++      user: parseInt(processedUserTime.wMinute, 10) * 60 +
++            parseInt(processedUserTime.wSecond, 10) +
++            parseInt(processedUserTime.wMilliseconds, 10) / 1000,
++      sys: parseInt(processedKernelTime.wMinute, 10) * 60 +
++           parseInt(processedKernelTime.wSecond, 10) +
++           parseInt(processedKernelTime.wMilliseconds, 10) / 1000
 +    };
 +    data.total = data.user + data.sys;
 +
@@ -159,12 +161,20 @@ new file mode 100644
 +
 +  getMemoryUsage: function () {
 +    // TODO
-+    return {total: 0};
-+  },
++    return {total: null};
++  }
 +};
 +
 +
 +let Linux = {
++  _setupCTypes: function () {
++    this._libc = ctypes.open('libc.so.6');
++    this._sysconf = this._libc.declare('sysconf',
++                               ctypes.default_abi,
++                               ctypes.long, // return type
++                               ctypes.int); // name
++  },
++
 +  getIOCounters: function () {
 +    let lines = readFileAsLines("/proc/self/io");
 +    let total = 0;
@@ -194,13 +204,9 @@ new file mode 100644
 +  },
 +
 +  getCPUTimes: function () {
++    this._setupCTypes();
 +    // using ctypes to get value of _SC_CLK_TCK
-+    let libc = ctypes.open('libc.so');
-+    let sysconf = libc.declare('sysconf',
-+                               ctypes.default_abi,
-+                               ctypes.long, // return type
-+                               ctypes.int); // name
-+    let _SC_CLK_TCK = sysconf(3); // #define _SC_CLK_TCK 3
++    let _SC_CLK_TCK = this._sysconf(2); // #define _SC_CLK_TCK 2
 +
 +    let line = readFileAsLines("/proc/self/stat")[0];
 +    let startPos = line.indexOf(")") + 2;
@@ -211,17 +217,18 @@ new file mode 100644
 +    };
 +    data.total = data.user + data.sys;
 +    return data;
-+  },
++  }
 +};
 +
 +
 +let OSX = {
 +  getIOCounters: function () {
 +    // not available on OS X
-+    return {total: 0};
++    return {total: null};
 +  },
 +
 +  getMemoryUsage: function () {
++    this._setupCTypes();
 +    // data seems sketchy - peak is HUGE, rest are 0
 +    usage = this.getrusage();
 +    return {
@@ -229,30 +236,34 @@ new file mode 100644
 +      shared: parseInt(usage.ru_ixrss),
 +      unshared_data: parseInt(usage.ru_idrss),
 +      unshared_stack: parseInt(usage.ru_isrss),
-+      total: 0
++      total: null
 +    };
 +  },
 +
 +  getCPUTimes: function () {
++    this._setupCTypes();
 +    usage = this.getrusage();
 +    let data = {
-+      user: parseInt(usage.ru_utime.tv_sec) +
-+            parseInt(usage.ru_utime.tv_usec) / 1000000,
-+      sys: parseInt(usage.ru_stime.tv_sec) +
-+           parseInt(usage.ru_stime.tv_usec) / 1000000,
++      user: parseInt(usage.ru_utime.tv_sec, 10) +
++            parseInt(usage.ru_utime.tv_usec, 10) / 1000000,
++      sys: parseInt(usage.ru_stime.tv_sec, 10) +
++           parseInt(usage.ru_stime.tv_usec, 10) / 1000000
 +    };
 +    data.total = data.user + data.sys;
 +    return data;
 +  },
 +
-+  getrusage: function () {
-+    let timeval = new ctypes.StructType("timeval", [
++  _setupCTypes: function () {
++    if (this._initialized) {
++      return;
++    }
++    this._timeval = new ctypes.StructType("timeval", [
 +      {'tv_sec': ctypes.long},
-+      {'tv_usec': ctypes.long},
++      {'tv_usec': ctypes.long}
 +    ]);
-+    let rusage = new ctypes.StructType("rusage", [
-+      {'ru_utime': timeval},             /* user CPU time used */
-+      {'ru_stime': timeval},             /* system CPU time used */
++    this._rusage = new ctypes.StructType("rusage", [
++      {'ru_utime': this._timeval},       /* user CPU time used */
++      {'ru_stime': this._timeval},       /* system CPU time used */
 +      {'ru_maxrss': ctypes.long},        /* maximum resident set size */
 +      {'ru_ixrss': ctypes.long},         /* integral shared memory size */
 +      {'ru_idrss': ctypes.long},         /* integral unshared data size */
@@ -266,18 +277,23 @@ new file mode 100644
 +      {'ru_msgrcv': ctypes.long},        /* IPC messages received */
 +      {'ru_nsignals': ctypes.long},      /* signals received */
 +      {'ru_nvcsw': ctypes.long},         /* voluntary context switches */
-+      {'ru_nivcsw': ctypes.long},        /* involuntary context switches */
++      {'ru_nivcsw': ctypes.long}         /* involuntary context switches */
 +    ]);
-+    let sys = ctypes.open("libSystem.dylib");
-+    let getrusage = sys.declare("getrusage",
++    this._sys = ctypes.open("libSystem.dylib");
++    this._getrusage = this._sys.declare("getrusage",
 +                                ctypes.default_abi,
 +                                ctypes.int, // return type
 +                                ctypes.int, // who
-+                                rusage.ptr); // r_usage
-+    let usage = new rusage();
-+    usage.ru_utime = new timeval();
-+    usage.ru_stime = new timeval();
-+    let retVal = getrusage(0, usage.address());
++                                this._rusage.ptr); // r_usage
++    this._initialized = true;
++  },
++
++  getrusage: function() {
++    this._setupCTypes();
++    let usage = new this._rusage();
++    usage.ru_utime = new this._timeval();
++    usage.ru_stime = new this._timeval();
++    let retVal = this._getrusage(0, usage.address());
 +    return usage;
 +  }
 +};

@@ -1,0 +1,21 @@
+# HG changeset patch
+# Parent e42374f83509299ab8232fe7a7ebe1b14471bcfc
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+Bug 912235 - Run exthandler xpcshell tests sequentially to get rid of intermittent failures.
+
+diff --git a/uriloader/exthandler/tests/unit/xpcshell.ini b/uriloader/exthandler/tests/unit/xpcshell.ini
+--- a/uriloader/exthandler/tests/unit/xpcshell.ini
++++ b/uriloader/exthandler/tests/unit/xpcshell.ini
+@@ -1,11 +1,12 @@
+ [DEFAULT]
+ head = head_handlerService.js
+ tail = tail_handlerService.js
++run-sequentially = Bug 912235 - Intermittent failures
+ 
+ [test_getTypeFromExtension_ext_to_type_mapping.js]
+ [test_getTypeFromExtension_with_empty_Content_Type.js]
+ [test_handlerService.js]
+ # Bug 676997: test consistently fails on Android
+ fail-if = os == "android"
+ [test_punycodeURIs.js]
+ # Bug 676997: test consistently fails on Android
