@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent e42374f83509299ab8232fe7a7ebe1b14471bcfc
+# Parent 6b92cb3774963161a65dcae50439e2a9ee23379a
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 909577 - API for reading process info
 
@@ -7,13 +7,13 @@ diff --git a/toolkit/modules/ProcessInfo.jsm b/toolkit/modules/ProcessInfo.jsm
 new file mode 100644
 --- /dev/null
 +++ b/toolkit/modules/ProcessInfo.jsm
-@@ -0,0 +1,301 @@
+@@ -0,0 +1,320 @@
 +/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
-+this.EXPORTED_SYMBOLS = [ "ProcessInfo" ];
++this.EXPORTED_SYMBOLS = ["ProcessInfo"];
 +
 +const Cc = Components.classes;
 +const Ci = Components.interfaces;
@@ -88,28 +88,28 @@ new file mode 100644
 +    ]);
 +    this._kernel32 = ctypes.open('Kernel32.dll');
 +    this._GetProcessIoCounters = this._kernel32.declare('GetProcessIoCounters',
-+                                                ctypes.winapi_abi,
-+                                                ctypes.bool, // return type
-+                                                ctypes.voidptr_t, // hProcess
-+                                                this._IO_COUNTERS.ptr); // lpIoCounters
++      ctypes.winapi_abi,
++      ctypes.bool, // return type
++      ctypes.voidptr_t, // hProcess
++      this._IO_COUNTERS.ptr); // lpIoCounters
 +
 +    this._GetCurrentProcess = this._kernel32.declare('GetCurrentProcess',
-+                                             ctypes.winapi_abi,
-+                                             ctypes.voidptr_t); // return type
++      ctypes.winapi_abi,
++      ctypes.voidptr_t); // return type
 +    this._GetProcessTimes = kernel32.declare('GetProcessTimes',
-+                                      ctypes.winapi_abi,
-+                                      ctypes.bool, // return type
-+                                      ctypes.voidptr_t, // hProcess
-+                                      this._FILETIME.ptr, // lpCreationTime
-+                                      this._FILETIME.ptr, // lpExitTime
-+                                      this._FILETIME.ptr, // lpKernelTime
-+                                      this._FILETIME.ptr); // lpUserTime
++      ctypes.winapi_abi,
++      ctypes.bool, // return type
++      ctypes.voidptr_t, // hProcess
++      this._FILETIME.ptr, // lpCreationTime
++      this._FILETIME.ptr, // lpExitTime
++      this._FILETIME.ptr, // lpKernelTime
++      this._FILETIME.ptr); // lpUserTime
 +
 +    this._FileTimeToSystemTime = kernel32.declare('FileTimeToSystemTime',
-+                                          ctypes.winapi_abi,
-+                                          ctypes.bool, // return type
-+                                          this._FILETIME.ptr, // lpFileTime
-+                                          this._SYSTEMTIME.ptr); // lpSystemTime
++      ctypes.winapi_abi,
++      ctypes.bool, // return type
++      this._FILETIME.ptr, // lpFileTime
++      this._SYSTEMTIME.ptr); // lpSystemTime
 +    this._initialized = true;
 +  },
 +
@@ -121,7 +121,10 @@ new file mode 100644
 +    let data = {
 +      readBytes: parseInt(io.readBytes, 10),
 +      writeBytes: parseInt(io.writeBytes, 10),
-+      otherBytes: parseInt(io.otherBytes, 10)
++      otherBytes: parseInt(io.otherBytes, 10),
++      readOps: parseInt(io.readOps, 10),
++      writeOps: parseInt(io.writeOps, 10),
++      otherOps: parseInt(io.otherOps, 10),
 +    };
 +    data.total = data.readBytes + data.writeBytes + data.otherBytes;
 +    return data;
@@ -135,10 +138,10 @@ new file mode 100644
 +    let userTime = new this._FILETIME();
 +
 +    this._GetProcessTimes(this._GetCurrentProcess(),
-+                  creationTime.address(),
-+                  exitTime.address(),
-+                  kernelTime.address(),
-+                  userTime.address());
++      creationTime.address(),
++      exitTime.address(),
++      kernelTime.address(),
++      userTime.address());
 +
 +    let processedKernelTime = new this._SYSTEMTIME();
 +    let processedUserTime = new this._SYSTEMTIME();
@@ -170,9 +173,9 @@ new file mode 100644
 +  _setupCTypes: function () {
 +    this._libc = ctypes.open('libc.so.6');
 +    this._sysconf = this._libc.declare('sysconf',
-+                               ctypes.default_abi,
-+                               ctypes.long, // return type
-+                               ctypes.int); // name
++      ctypes.default_abi,
++      ctypes.long, // return type
++      ctypes.int); // name
 +  },
 +
 +  getIOCounters: function () {
@@ -206,6 +209,8 @@ new file mode 100644
 +  getCPUTimes: function () {
 +    this._setupCTypes();
 +    // using ctypes to get value of _SC_CLK_TCK
++    // because procfs reports the number of cpu cycles
++    // per process instead of actual cpu times
 +    let _SC_CLK_TCK = this._sysconf(2); // #define _SC_CLK_TCK 2
 +
 +    let line = readFileAsLines("/proc/self/stat")[0];
@@ -298,6 +303,20 @@ new file mode 100644
 +  }
 +};
 +
++let NotSupported = {
++  getIOCounters: function () {
++    return {};
++  },
++
++  getCPUTimes: function () {
++    return {};
++  },
++
++  getMemoryUsage: function () {
++    return {};
++  },
++};
++
 +
 +if (OS.name == 'Darwin') {
 +  this.ProcessInfo = OSX;
@@ -306,16 +325,16 @@ new file mode 100644
 +} else if (OS.name == 'Windows_NT') {
 +  this.ProcessInfo = Windows;
 +} else {
-+  this.ProcessInfo = null;
++  this.ProcessInfo = NotSupported;
 +}
 +
 diff --git a/toolkit/modules/moz.build b/toolkit/modules/moz.build
 --- a/toolkit/modules/moz.build
 +++ b/toolkit/modules/moz.build
-@@ -14,16 +14,17 @@ EXTRA_JS_MODULES += [
-     'Geometry.jsm',
+@@ -17,16 +17,17 @@ EXTRA_JS_MODULES += [
      'Http.jsm',
      'InlineSpellChecker.jsm',
+     'LoadContextInfo.jsm',
      'NewTabUtils.jsm',
      'PageMenu.jsm',
      'PopupNotifications.jsm',
@@ -327,9 +346,9 @@ diff --git a/toolkit/modules/moz.build b/toolkit/modules/moz.build
      'RemoteAddonsChild.jsm',
      'RemoteAddonsParent.jsm',
      'RemoteController.jsm',
+     'RemoteFinder.jsm',
      'RemoteSecurityUI.jsm',
      'RemoteWebNavigation.jsm',
-     'RemoteWebProgress.jsm',
 diff --git a/toolkit/modules/tests/xpcshell/test_ProcessInfo.js b/toolkit/modules/tests/xpcshell/test_ProcessInfo.js
 new file mode 100644
 --- /dev/null
@@ -348,7 +367,7 @@ new file mode 100644
 diff --git a/toolkit/modules/tests/xpcshell/xpcshell.ini b/toolkit/modules/tests/xpcshell/xpcshell.ini
 --- a/toolkit/modules/tests/xpcshell/xpcshell.ini
 +++ b/toolkit/modules/tests/xpcshell/xpcshell.ini
-@@ -9,8 +9,9 @@ tail =
+@@ -14,8 +14,9 @@ support-files =
  [test_Promise.js]
  [test_propertyListsUtils.js]
  [test_readCertPrefs.js]

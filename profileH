@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent d8505c01b8d939db5b334cf5926ae726c858edb9
+# Parent ecbb53978eec23c88e8799efc556465df2f48dd7
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 907455 - Enhance the xpcshell harness to provide per test resource usage data
 
@@ -111,16 +111,16 @@ diff --git a/testing/xpcshell/mach_commands.py b/testing/xpcshell/mach_commands.
              'debugger': debugger,
              'debuggerArgs': debuggerArgs,
              'debuggerInteractive': debuggerInteractive,
-+            'resource_usage_file': resource_usage_file
++            'resource_usage_file': resource_usage_file,
+             'on_message': (lambda obj, msg: xpcshell.log.info(msg)) \
+                             if test_path is not None else None,
          }
  
          if manifest is not None:
              args['manifest'] = manifest
          elif test_dirs is not None:
              if isinstance(test_dirs, list):
-                 args['testdirs'] = test_dirs
-             else:
-@@ -218,16 +221,19 @@ class MachCommands(MachCommandBase):
+@@ -220,16 +223,19 @@ class MachCommands(MachCommandBase):
      @CommandArgument('--keep-going', '-k', action='store_true',
          help='Continue running tests after a SIGINT is received.')
      @CommandArgument('--sequential', action='store_true',
@@ -162,7 +162,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          self.retry = retry
  
          self.appPath = kwargs.get('appPath')
-@@ -125,16 +125,18 @@ class XPCShellTestThread(Thread):
+@@ -126,16 +126,18 @@ class XPCShellTestThread(Thread):
          self.log = log
  
          # only one of these will be set to 1. adding them to the totals in
@@ -175,13 +175,13 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
 +
          self.output_lines = []
          self.has_failure_output = False
+         self.saw_proc_start = False
+         self.saw_proc_end = False
  
          # event from main thread to signal work done
          self.event = event
          self.done = False # explicitly set flag so we don't rely on thread.isAlive
- 
-     def run(self):
-@@ -354,16 +356,22 @@ class XPCShellTestThread(Thread):
+@@ -369,16 +371,22 @@ class XPCShellTestThread(Thread):
          # setting up every test with its own plugins directory.
          if not self.pluginsPath:
              self.pluginsPath = os.path.join(self.appPath, 'plugins')
@@ -204,29 +204,28 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                         # the Windows filesystem is slow to react to the changes
          try_count = 0
          while try_count < TRY_LIMIT:
-@@ -438,17 +446,20 @@ class XPCShellTestThread(Thread):
+@@ -472,16 +480,20 @@ class XPCShellTestThread(Thread):
  
-             if 'action' not in line_object:
-                 # In case a test outputs something that happens to be valid
-                 # JSON object.
-                 self.append_message_from_line(line_string)
-                 continue
+         if 'action' not in line_object:
+             # In case a test outputs something that happens to be valid
+             # JSON.
+             self.report_message(line_string)
+             return
  
-             action = line_object['action']
--            self.append_message_from_line(line_object)
-+            if action == 'resource_usage':
-+                self.resource_data = line_object['resource_data']
-+            else:
-+                self.append_message_from_line(line_object)
+         action = line_object['action']
++        if action == 'resource_usage':
++            self.resource_data = line_object['resource_data']
++            return
++
+         self.report_message(line_object)
  
-             if action in FAILURE_ACTIONS:
-                 self.has_failure_output = True
- 
-             elif action == 'child_test_start':
-                 seen_proc_start = True
-             elif action == 'child_test_end':
-                 seen_proc_end = True
-@@ -601,16 +612,20 @@ class XPCShellTestThread(Thread):
+         if action in FAILURE_ACTIONS:
+             self.has_failure_output = True
+         elif action == 'child_test_start':
+             self.saw_proc_start = True
+         elif action == 'child_test_end':
+             self.saw_proc_end = True
+@@ -633,16 +645,20 @@ class XPCShellTestThread(Thread):
                          for k, v in self.test_object.items():
                              f.write('%s = %s\n' % (k, v))
  
@@ -247,7 +246,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                  self.xunit_result["passed"] = True
                  self.retry = False
  
-@@ -1087,17 +1102,17 @@ class XPCShellTests(object):
+@@ -1119,17 +1135,17 @@ class XPCShellTests(object):
                   manifest=None, testdirs=None, testPath=None, mobileArgs=None,
                   interactive=False, verbose=False, keepGoing=False, logfiles=True,
                   thisChunk=1, totalChunks=1, debugger=None,
@@ -256,8 +255,8 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
                   testsRootDir=None, xunitFilename=None, xunitName=None,
                   testingModulesDir=None, autolog=False, pluginsPath=None,
                   testClass=XPCShellTestThread, failureManifest=None,
--                 **otherOptions):
-+                 resource_usage_file=None, **otherOptions):
+-                 on_message=None, **otherOptions):
++                 on_message=None, resource_usage_file=None, **otherOptions):
          """Run xpcshell tests.
  
          |xpcshell|, is the xpcshell executable to use to run the tests.
@@ -266,7 +265,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          |symbolsPath|, if provided is the path to a directory containing
            breakpad symbols for processing crashes in tests.
          |manifest|, if provided, is a file containing a list of
-@@ -1235,16 +1250,20 @@ class XPCShellTests(object):
+@@ -1268,16 +1284,20 @@ class XPCShellTests(object):
  
          if shuffle:
              random.shuffle(self.alltests)
@@ -287,8 +286,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              'pluginsPath': self.pluginsPath,
              'httpdManifest': self.httpdManifest,
              'httpdJSPath': self.httpdJSPath,
-@@ -1252,17 +1271,18 @@ class XPCShellTests(object):
-             'testharnessdir': self.testharnessdir,
+@@ -1286,16 +1306,17 @@ class XPCShellTests(object):
              'profileName': self.profileName,
              'singleFile': self.singleFile,
              'env': self.env, # making a copy of this in the testthreads
@@ -296,9 +294,9 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              'logfiles': self.logfiles,
              'xpcshell': self.xpcshell,
              'xpcsRunArgs': self.xpcsRunArgs,
--            'failureManifest': failureManifest
-+            'failureManifest': failureManifest,
+             'failureManifest': failureManifest,
 +            'resource_usage_results': resource_usage_results,
+             'on_message': self.on_message,
          }
  
          if self.sequential:
@@ -306,8 +304,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
              # when we are only running tests sequentially.
              signal.signal(signal.SIGINT, markGotSIGINT)
  
-         if self.debuggerInfo:
-@@ -1428,16 +1448,25 @@ class XPCShellTests(object):
+@@ -1462,16 +1483,25 @@ class XPCShellTests(object):
              self.writeXunitResults(filename=xunitFilename, results=self.xunitResults,
                                     name=xunitName)
  
@@ -318,7 +315,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
  
 +        if resource_usage_file:
 +            resource_usage_data = {
-+                'version': 1.0,
++                'version': 1,
 +                'data': resource_usage_results,
 +            }
 +            with open(resource_usage_file, 'w') as f:
@@ -333,7 +330,7 @@ diff --git a/testing/xpcshell/runxpcshelltests.py b/testing/xpcshell/runxpcshell
          OptionParser.__init__(self)
  
          addCommonOptions(self)
-@@ -1501,16 +1530,19 @@ class XPCShellOptions(OptionParser):
+@@ -1535,16 +1565,19 @@ class XPCShellOptions(OptionParser):
                          help="path to file where xUnit results will be written.")
          self.add_option("--xunit-suite-name", dest="xunitName",
                          help="name to record for this xUnit test suite. Many "

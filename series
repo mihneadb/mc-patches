@@ -1,15 +1,7 @@
 profileJS
 profileH
-reftest-mozprocess
 try-reftest-all
-exthandler_tests
-b2g-libs
 try-xpc-mobile
-unblock
-windows-hangs
-oskill-followup
-oskill
-fixup
 try-xpc-all
 try-marionette-some
 try-xpc-desktop-all
