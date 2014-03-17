@@ -1,8 +1,9 @@
 profileJS
+no-hardcode
+try-xpc-all
 profileH
 try-reftest-all
 try-xpc-mobile
-try-xpc-all
 try-marionette-some
 try-xpc-desktop-all
 try-reftest-desktop

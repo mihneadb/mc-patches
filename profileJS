@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent 6b92cb3774963161a65dcae50439e2a9ee23379a
+# Parent 83c9853e136451474dfa6d1aaa60a7fca7d2d83a
 # User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
 Bug 909577 - API for reading process info
 
@@ -331,16 +331,17 @@ new file mode 100644
 diff --git a/toolkit/modules/moz.build b/toolkit/modules/moz.build
 --- a/toolkit/modules/moz.build
 +++ b/toolkit/modules/moz.build
-@@ -17,16 +17,17 @@ EXTRA_JS_MODULES += [
-     'Http.jsm',
-     'InlineSpellChecker.jsm',
+@@ -25,16 +25,17 @@ EXTRA_JS_MODULES += [
      'LoadContextInfo.jsm',
+     'Log.jsm',
      'NewTabUtils.jsm',
      'PageMenu.jsm',
+     'PermissionsUtils.jsm',
      'PopupNotifications.jsm',
      'Preferences.jsm',
      'PrivateBrowsingUtils.jsm',
 +    'ProcessInfo.jsm',
+     'Promise-backend.js',
      'Promise.jsm',
      'PropertyListUtils.jsm',
      'RemoteAddonsChild.jsm',
@@ -348,7 +349,6 @@ diff --git a/toolkit/modules/moz.build b/toolkit/modules/moz.build
      'RemoteController.jsm',
      'RemoteFinder.jsm',
      'RemoteSecurityUI.jsm',
-     'RemoteWebNavigation.jsm',
 diff --git a/toolkit/modules/tests/xpcshell/test_ProcessInfo.js b/toolkit/modules/tests/xpcshell/test_ProcessInfo.js
 new file mode 100644
 --- /dev/null
@@ -367,7 +367,7 @@ new file mode 100644
 diff --git a/toolkit/modules/tests/xpcshell/xpcshell.ini b/toolkit/modules/tests/xpcshell/xpcshell.ini
 --- a/toolkit/modules/tests/xpcshell/xpcshell.ini
 +++ b/toolkit/modules/tests/xpcshell/xpcshell.ini
-@@ -14,8 +14,9 @@ support-files =
+@@ -18,9 +18,10 @@ support-files =
  [test_Promise.js]
  [test_propertyListsUtils.js]
  [test_readCertPrefs.js]
@@ -377,3 +377,4 @@ diff --git a/toolkit/modules/tests/xpcshell/xpcshell.ini b/toolkit/modules/tests
  [test_TelemetryTimestamps.js]
  [test_timer.js]
 +[test_ProcessInfo.js]
+ [test_ZipUtils.js]

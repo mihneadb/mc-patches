@@ -1,0 +1,52 @@
+# HG changeset patch
+# Parent a07aebef20e73f7c301825ec65ada182b8f75e0c
+# User Mihnea Dobrescu-Balaur <mihneadb@gmail.com>
+TODO
+
+diff --git a/netwerk/test/httpserver/httpd.js b/netwerk/test/httpserver/httpd.js
+--- a/netwerk/test/httpserver/httpd.js
++++ b/netwerk/test/httpserver/httpd.js
+@@ -510,16 +510,22 @@ nsHttpServer.prototype =
+     this._start(port, "localhost")
+   },
+ 
+   _start: function(port, host)
+   {
+     if (this._socket)
+       throw Cr.NS_ERROR_ALREADY_INITIALIZED;
+ 
++    if (port != -1 && _IS_XPCSHELL)
++    {
++      dump("Cannot use hardcoded httpd.js ports in XPCShell tests.\n");
++      throw Cr.NS_ERROR_ABORT;
++    }
++
+     this._port = port;
+     this._doQuit = this._socketClosed = false;
+ 
+     this._host = host;
+ 
+     // The listen queue needs to be long enough to handle
+     // network.http.max-persistent-connections-per-server or
+     // network.http.max-persistent-connections-per-proxy concurrent
+diff --git a/testing/xpcshell/head.js b/testing/xpcshell/head.js
+--- a/testing/xpcshell/head.js
++++ b/testing/xpcshell/head.js
+@@ -5,16 +5,17 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ /*
+  * This file contains common code that is loaded before each test file(s).
+  * See http://developer.mozilla.org/en/docs/Writing_xpcshell-based_unit_tests
+  * for more information.
+  */
+ 
++var _IS_XPCSHELL = true;
+ var _quit = false;
+ var _passed = true;
+ var _tests_pending = 0;
+ var _passedChecks = 0, _falsePassedChecks = 0;
+ var _todoChecks = 0;
+ var _cleanupFunctions = [];
+ var _pendingTimers = [];
+ var _profileInitialized = false;
